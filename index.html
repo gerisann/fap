@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<title>FAP – Fun Map</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css">
+<style>
+/* Layout: the map is the page. One soft white card (top-left), one ink pill action (bottom-centre), one sheet. No rules, no outlines; separation by space and shadow. */
+:root{
+  --ink:#16181c;
+  --paper:#ffffff;
+  --cobalt:#3355ff;
+  --mute:#8b9099;
+  --wash:color-mix(in srgb,var(--mute) 12%,var(--paper));
+  --wash-2:color-mix(in srgb,var(--mute) 22%,var(--paper));
+  --cobalt-soft:color-mix(in srgb,var(--cobalt) 10%,var(--paper));
+  --shadow:0 1px 2px rgba(22,24,28,.06),0 14px 44px -12px rgba(22,24,28,.22);
+  --r-lg:26px; --r-md:16px; --r-sm:11px;
+  --f-display:"Bricolage Grotesque","Avenir Next","Segoe UI",sans-serif;
+  --f-body:"Instrument Sans","Helvetica Neue",Arial,sans-serif;
+  --ctrl-filter:none;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#eceef1;--paper:#1b1d21;--cobalt:#6680ff;--mute:#7c828b;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 16px 48px -12px rgba(0,0,0,.6);--ctrl-filter:invert(.88) hue-rotate(180deg);color-scheme:dark;}}
+:root[data-theme="dark"]{--ink:#eceef1;--paper:#1b1d21;--cobalt:#6680ff;--mute:#7c828b;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 16px 48px -12px rgba(0,0,0,.6);--ctrl-filter:invert(.88) hue-rotate(180deg);color-scheme:dark;}
+html,body{height:100%}
+body{margin:0;background:var(--wash);color:var(--ink);font-family:var(--f-body);font-size:14px;overflow:hidden;-webkit-font-smoothing:antialiased}
+[hidden]{display:none!important}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--cobalt);outline-offset:2px}
+#map{position:fixed;inset:0;z-index:0;isolation:isolate}
+
+/* map chrome */
+.mapboxgl-ctrl-group,.mapboxgl-ctrl-group{filter:var(--ctrl-filter);border-radius:var(--r-sm)!important;box-shadow:var(--shadow)!important;overflow:hidden}
+.mapboxgl-ctrl-group button+button,.mapboxgl-ctrl-group button+button{border-top:0!important}
+.mapboxgl-ctrl-bottom-right,.mapboxgl-ctrl-bottom-right{margin-right:calc(6px + env(safe-area-inset-right,0px));margin-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
+.mapboxgl-ctrl-attrib,.mapboxgl-ctrl-attrib{background:color-mix(in srgb,var(--paper) 70%,transparent)!important;color:var(--mute)!important;border-radius:var(--r-sm)!important}
+.mapboxgl-ctrl-attrib a,.mapboxgl-ctrl-attrib a{color:var(--mute)!important}
+.mapboxgl-popup-content,.mapboxgl-popup-content{background:var(--paper);color:var(--ink);border-radius:var(--r-sm);padding:10px 14px;box-shadow:var(--shadow);font:500 13px/1.35 var(--f-body)}
+.mapboxgl-popup-tip,.mapboxgl-popup-tip{display:none}
+.pop-t{display:flex;gap:8px;align-items:center;font-weight:600}
+.pop-s{color:var(--mute);font-size:12px;margin-top:3px}
+
+/* card */
+.board{position:fixed;z-index:5;top:calc(18px + env(safe-area-inset-top,0px));left:calc(18px + env(safe-area-inset-left,0px));width:300px;
+  max-height:calc(100% - 120px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+  background:var(--paper);border-radius:var(--r-lg);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+.board-head{display:flex;align-items:flex-end;justify-content:space-between;padding:22px 22px 0}
+.logo{font:800 30px/.8 var(--f-display);letter-spacing:-.04em}
+.logo i{font-style:normal;color:var(--cobalt)}
+.score{text-align:right;line-height:1.15}
+.score b{display:block;font:600 19px/1 var(--f-display);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.score span{font-size:12px;color:var(--mute)}
+.board-body{display:flex;flex-direction:column;gap:18px;padding:20px 14px 18px;overflow:auto;min-height:0}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--wash);border-radius:999px;padding:4px;margin:0 8px}
+.seg button{border:0;background:transparent;border-radius:999px;padding:9px 0;font-weight:500;color:var(--mute);transition:background .15s,color .15s}
+.seg button[aria-pressed="true"]{background:var(--paper);color:var(--ink);box-shadow:0 1px 3px rgba(22,24,28,.12)}
+#filterBox{margin:0 8px}
+#filterBox:empty{display:none}
+.filter-chip{display:flex;align-items:center;gap:10px;background:var(--cobalt-soft);border-radius:999px;padding:6px 6px 6px 14px;font-weight:600}
+.filter-chip button{border:0;background:var(--paper);border-radius:50%;width:26px;height:26px;font-size:12px;color:var(--mute)}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.teams{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.teams li button{width:100%;display:grid;grid-template-columns:9px 1fr auto;align-items:center;gap:12px;border:0;background:transparent;padding:9px 10px;border-radius:var(--r-sm);text-align:left;font-weight:500}
+.teams li button:hover{background:var(--wash)}
+.teams li button[aria-pressed="true"]{background:var(--cobalt-soft)}
+.teams .n{color:var(--mute);font-variant-numeric:tabular-nums;font-size:13px}
+.teams li button[aria-pressed="true"] .n{color:var(--cobalt)}
+.teams .bar{display:none}
+.foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 8px}
+.switch{display:flex;align-items:center;gap:10px;color:var(--mute);font-size:13px;cursor:pointer}
+.switch input{appearance:none;width:30px;height:18px;border-radius:999px;background:var(--wash-2);position:relative;margin:0;cursor:pointer;transition:background .15s}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--paper);transition:transform .15s}
+.switch input:checked{background:var(--ink)}
+.switch input:checked::after{transform:translateX(12px)}
+.themebtn{border:0;background:var(--wash);width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:var(--ink);flex:none}
+.themebtn svg{width:16px;height:16px}
+.themebtn .moon{display:none}
+.is-dark .themebtn .sun{display:none}
+.is-dark .themebtn .moon{display:block}
+.foot-r{display:flex;align-items:center;gap:12px}
+#modeNote{margin:0;font-size:12px;color:var(--mute);text-align:right}
+details.more{display:contents}
+details.more summary{display:none}
+
+/* primary action */
+.cta{position:fixed;z-index:5;left:50%;transform:translateX(-50%);bottom:calc(26px + env(safe-area-inset-bottom,0px));
+  border:0;border-radius:999px;background:var(--ink);color:var(--paper);padding:16px 26px 16px 22px;font-weight:600;font-size:15px;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;white-space:nowrap}
+.cta::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--cobalt);box-shadow:0 0 0 4px color-mix(in srgb,var(--cobalt) 35%,transparent)}
+body.sheet-open .cta{display:none}
+
+/* sheet */
+.sheet{position:fixed;z-index:6;top:calc(18px + env(safe-area-inset-top,0px));right:calc(18px + env(safe-area-inset-right,0px));width:340px;
+  max-height:calc(100% - 36px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));overflow:auto;
+  background:var(--paper);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:24px;display:flex;flex-direction:column;gap:24px}
+.sheet-head{display:flex;align-items:center;justify-content:space-between}
+.sheet h2{margin:0;font:800 26px/1 var(--f-display);letter-spacing:-.035em}
+.x{border:0;background:var(--wash);width:34px;height:34px;border-radius:50%;color:var(--mute);font-size:14px}
+.step{display:flex;flex-direction:column;gap:8px}
+.step .label{font-size:12px;color:var(--mute);font-weight:500;padding-left:4px}
+.step .label i{display:none}
+.field{width:100%;box-sizing:border-box;border:0;background:var(--wash);border-radius:var(--r-md);padding:14px 16px;font-size:15px;font-weight:500}
+.field::placeholder{color:var(--mute)}
+.combo{position:relative}
+.combo ul{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:3;list-style:none;margin:0;padding:6px;background:var(--paper);border-radius:var(--r-md);box-shadow:var(--shadow);max-height:240px;overflow:auto}
+.combo li{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r-sm);cursor:pointer}
+.combo li[aria-selected="true"],.combo li:hover{background:var(--wash)}
+.combo li small{margin-left:auto;color:var(--mute);font-size:11px}
+.loc{display:grid;grid-template-columns:auto 1fr;gap:8px}
+.chipbtn{border:0;background:var(--ink);color:var(--paper);border-radius:var(--r-md);padding:0 16px;font-weight:600;font-size:14px}
+.loc select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mute) 50%),linear-gradient(135deg,var(--mute) 50%,transparent 50%);background-position:calc(100% - 20px) 52%,calc(100% - 15px) 52%;background-size:5px 5px;background-repeat:no-repeat;padding-right:36px}
+.picked{font-size:12px;color:var(--mute);padding-left:4px;min-height:1.2em}
+.picked.on{color:var(--ink)}
+.prec{display:grid;grid-template-columns:repeat(3,1fr);background:var(--wash);border-radius:999px;padding:4px}
+.prec label{display:block;text-align:center;padding:10px 0;border-radius:999px;cursor:pointer;font-weight:500;color:var(--mute);transition:background .15s,color .15s}
+.prec label:has(input:checked){background:var(--paper);color:var(--ink);box-shadow:0 1px 3px rgba(22,24,28,.12)}
+.prec label:has(input:focus-visible){outline:2px solid var(--cobalt)}
+.prec input{position:absolute;opacity:0;pointer-events:none}
+.prec span,.prec b{font:inherit}
+.hint{font-size:12px;color:var(--mute);padding-left:4px}
+.save{border:0;border-radius:999px;background:var(--cobalt);color:var(--paper);padding:16px;font-weight:600;font-size:15px}
+.save:disabled{background:var(--wash-2);color:var(--mute);cursor:not-allowed}
+.actions{display:flex;flex-direction:column;gap:10px}
+.textbtn{border:0;background:transparent;color:var(--mute);font-size:13px;padding:6px;align-self:center}
+.status{font-size:13px;color:var(--ink);text-align:center;min-height:0}
+.status:empty{display:none}
+.status.err{color:var(--cobalt)}
+
+.pickhint{position:fixed;z-index:7;left:50%;transform:translateX(-50%);bottom:calc(26px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);font-weight:600;padding:15px 22px;border-radius:999px;box-shadow:var(--shadow);white-space:nowrap}
+
+/* markers */
+.donut{display:grid;place-items:center;cursor:pointer;filter:drop-shadow(0 3px 8px rgba(22,24,28,.18))}
+.donut svg{position:absolute;inset:0}
+.donut b{position:relative;font:600 12px/1 var(--f-body);font-variant-numeric:tabular-nums;color:var(--ink)}
+.cl{font:600 12px/1 var(--f-body);font-variant-numeric:tabular-nums;pointer-events:none;color:#fff}
+.cl.dark{color:#16181c}
+.city{font:500 10px/1 var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--mute);pointer-events:none;white-space:nowrap;transform:translateY(14px)}
+#map.lowzoom .city{display:none}
+.me{width:16px;height:16px;border-radius:50%;background:var(--cobalt);border:3px solid var(--paper);box-shadow:0 0 0 6px color-mix(in srgb,var(--cobalt) 25%,transparent),var(--shadow)}
+.me.pending{background:var(--ink);cursor:grab}
+
+@media (max-width:720px){
+  .board{top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));right:calc(10px + env(safe-area-inset-right,0px));width:auto;border-radius:22px;max-height:none}
+  .board-head{padding:16px 18px 0}
+  .logo{font-size:26px}
+  .board-body{padding:14px 10px 12px;gap:12px;overflow:visible}
+  .seg{margin:0 6px}
+  #filterBox{margin:0 6px}
+  .teams{flex-direction:row;gap:6px;overflow-x:auto;scrollbar-width:none;padding:0 6px;margin:0 -10px;padding-left:16px;padding-right:16px}
+  .teams::-webkit-scrollbar{display:none}
+  .teams li{flex:none}
+  .teams li button{display:flex;gap:8px;background:var(--wash);border-radius:999px;padding:8px 12px;font-size:13px}
+  .teams .n{font-size:12px}
+  .foot{margin:0 6px}
+  body.sheet-open .board{display:none}
+  .sheet{top:auto;bottom:0;left:0;right:0;width:auto;max-height:82%;border-radius:26px 26px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom,0px));padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));gap:20px}
+  .cta{bottom:calc(18px + env(safe-area-inset-bottom,0px))}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="map" aria-label="Szurkolói térkép"></div>
+
+<section class="board" aria-label="FAP">
+  <header class="board-head">
+    <div class="logo">fap<i>.</i></div>
+    <div class="score"><b id="sTotal">–</b><span id="sTeams">csapat</span></div>
+  </header>
+  <div class="board-body">
+    <div class="seg" role="group" aria-label="Nézet">
+      <button id="vPins" aria-pressed="true">Pinek</button>
+      <button id="vHeat" aria-pressed="false">Heatmap</button>
+    </div>
+    <div id="filterBox"></div>
+    <details class="more" id="teamsWrap" open><summary>Csapatok</summary>
+      <ul class="teams" id="teamList"></ul>
+    </details>
+    <div class="foot">
+      <label class="switch"><input type="checkbox" id="demoToggle" checked> Demó</label>
+      <div class="foot-r"><p id="modeNote"></p><button class="themebtn" id="themeBtn" aria-label="Világos / sötét mód"><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button></div>
+    </div>
+  </div>
+</section>
+
+<button class="cta" id="openSheet">Bejelölöm magam</button>
+
+<aside class="sheet" id="sheet" hidden aria-label="Bejelölés">
+  <div class="sheet-head"><h2>Hol szurkolsz?</h2><button class="x" id="closeSheet" aria-label="Bezárás">✕</button></div>
+  <div class="step" id="st1">
+    <div class="label"><i>1</i>Csapat</div>
+    <div class="combo">
+      <input class="field" id="teamInput" placeholder="Arsenal, Fradi, Boca…" autocomplete="off" maxlength="40" role="combobox" aria-expanded="false" aria-controls="teamOpts">
+      <ul id="teamOpts" role="listbox" hidden></ul>
+    </div>
+  </div>
+  <div class="step" id="st2">
+    <div class="label"><i>2</i>Hely</div>
+    <div class="loc">
+      <button class="chipbtn" id="pickBtn">Térképen</button>
+      <select class="field" id="citySel" aria-label="Város"><option value="">vagy válassz várost</option></select>
+    </div>
+    <div class="picked" id="pickedBox"></div>
+  </div>
+  <div class="step" id="st3">
+    <div class="label"><i>3</i>Pontosság</div>
+    <div class="prec" role="radiogroup" aria-label="Pontosság">
+      <label><input type="radio" name="prec" value="area" id="pArea" checked><b>Környék</b></label>
+      <label><input type="radio" name="prec" value="city" id="pCity"><b>Város</b></label>
+      <label><input type="radio" name="prec" value="exact" id="pExact"><b>Pontos</b></label>
+    </div>
+    <div class="hint" id="precHint">±500 m-rel elmosva</div>
+  </div>
+  <div class="actions">
+    <button class="save" id="saveBtn" disabled>Felrakom</button>
+    <div id="myRow" hidden style="display:flex;justify-content:center"><button class="textbtn" id="delBtn">Pinem törlése</button></div>
+    <div class="status" id="status" role="status"></div>
+  </div>
+</aside>
+
+<div class="pickhint" id="pickHint" hidden>Koppints oda, ahol szurkolsz</div>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
+<script>// [name, country, color]
+const TEAMS = [
+["Arsenal","ENG","#EF0107"],["Chelsea","ENG","#034694"],["Liverpool","ENG","#C8102E"],["Manchester United","ENG","#DA291C"],["Manchester City","ENG","#6CABDD"],["Tottenham Hotspur","ENG","#E8EAF0"],["Newcastle United","ENG","#9a9a9a"],["Aston Villa","ENG","#95BFE5"],["West Ham United","ENG","#7A263A"],["Everton","ENG","#003399"],["Leeds United","ENG","#FFCD00"],["Nottingham Forest","ENG","#DD0000"],["Brighton","ENG","#0057B8"],["Celtic","SCO","#018749"],["Rangers","SCO","#1B458F"],
+["Real Madrid","ESP","#FEBE10"],["FC Barcelona","ESP","#A50044"],["Atlético Madrid","ESP","#CB3524"],["Sevilla","ESP","#D71920"],["Real Betis","ESP","#00954C"],["Valencia","ESP","#F18E00"],["Athletic Bilbao","ESP","#EE2523"],["Real Sociedad","ESP","#0067B1"],
+["Bayern München","GER","#DC052D"],["Borussia Dortmund","GER","#FDE100"],["Bayer Leverkusen","GER","#E32221"],["RB Leipzig","GER","#DD0741"],["Schalke 04","GER","#004D9D"],["Eintracht Frankfurt","GER","#E1000F"],["Hamburger SV","GER","#0A3F86"],["1. FC Köln","GER","#ED1C24"],["Union Berlin","GER","#EB1923"],["St. Pauli","GER","#7B4A2B"],
+["Juventus","ITA","#F2F2F2"],["AC Milan","ITA","#FB090B"],["Inter","ITA","#0068A8"],["AS Roma","ITA","#8E1F2F"],["Lazio","ITA","#87D8F7"],["Napoli","ITA","#12A0D7"],["Fiorentina","ITA","#482E92"],["Atalanta","ITA","#1E71B8"],
+["Paris Saint-Germain","FRA","#004170"],["Olympique de Marseille","FRA","#2FAEE0"],["Olympique Lyonnais","FRA","#DA0812"],["AS Monaco","FRA","#E51B22"],["LOSC Lille","FRA","#E01E13"],
+["Ajax","NED","#D2122E"],["PSV","NED","#ED1C24"],["Feyenoord","NED","#E30613"],["Benfica","POR","#E83030"],["FC Porto","POR","#00428C"],["Sporting CP","POR","#008057"],
+["Galatasaray","TUR","#FDB912"],["Fenerbahçe","TUR","#163962"],["Beşiktaş","TUR","#e6e6e6"],["Olympiacos","GRE","#E2001A"],["Panathinaikos","GRE","#007A3D"],["Club Brugge","BEL","#0067B1"],["Anderlecht","BEL","#5A2A82"],["Red Bull Salzburg","AUT","#D9083C"],["Rapid Wien","AUT","#00663E"],["Slavia Praha","CZE","#E30613"],["Sparta Praha","CZE","#A50034"],["Legia Warszawa","POL","#00843D"],["Dinamo Zagreb","CRO","#0057A8"],["Hajduk Split","CRO","#e8e8e8"],["Crvena zvezda","SRB","#E30613"],["Partizan","SRB","#d9d9d9"],["Steaua București","ROU","#E30613"],["Shakhtar Donetsk","UKR","#F26522"],["Dynamo Kyiv","UKR","#1A5DAD"],["Copenhagen","DEN","#1B3E8B"],["Malmö FF","SWE","#73B5E8"],["Young Boys","SUI","#FFD700"],["Basel","SUI","#C8102E"],
+["Ferencváros","HUN","#1E9E4A"],["Újpest","HUN","#6A3FA0"],["MTK Budapest","HUN","#2B5CAB"],["Puskás Akadémia","HUN","#F0C419"],["Debreceni VSC","HUN","#E2231A"],["Videoton / MOL Fehérvár","HUN","#3B66C4"],["Honvéd","HUN","#D62F35"],["Diósgyőr","HUN","#C41E3A"],["Paksi FC","HUN","#2E8B57"],["ETO Győr","HUN","#1A9E4A"],["ZTE","HUN","#3A5FCD"],
+["Boca Juniors","ARG","#103F79"],["River Plate","ARG","#E30613"],["Racing Club","ARG","#6CB4E4"],["Independiente","ARG","#E2001A"],["Flamengo","BRA","#C52613"],["Corinthians","BRA","#dedede"],["Palmeiras","BRA","#006437"],["São Paulo","BRA","#FE0000"],["Santos","BRA","#f0f0f0"],["Grêmio","BRA","#0D80BF"],["Peñarol","URU","#FDDB00"],["Nacional","URU","#1F3C88"],["Colo-Colo","CHI","#d9d9d9"],["América","MEX","#FFE600"],["Chivas Guadalajara","MEX","#CD1F2D"],["Club Atlético Nacional","COL","#00843D"],
+["LA Galaxy","USA","#00245D"],["Inter Miami","USA","#F7B5CD"],["Seattle Sounders","USA","#5D9741"],["LAFC","USA","#C39E6D"],["Toronto FC","CAN","#B81137"],
+["Al Ahly","EGY","#E30613"],["Zamalek","EGY","#f2f2f2"],["Kaizer Chiefs","RSA","#FFC72C"],["Orlando Pirates","RSA","#cfcfcf"],["Raja Casablanca","MAR","#00A651"],["Wydad Casablanca","MAR","#E30613"],["Esperance","TUN","#E30613"],
+["Al Hilal","KSA","#005CA9"],["Al Nassr","KSA","#FFE500"],["Al Ittihad","KSA","#F4D03F"],["Persepolis","IRN","#E30613"],["Urawa Red Diamonds","JPN","#E60012"],["Kashima Antlers","JPN","#B71C1C"],["Jeonbuk Motors","KOR","#00843D"],["Shanghai Port","CHN","#E30613"],["Melbourne Victory","AUS","#0A2D6E"],["Sydney FC","AUS","#6CACE4"],["Mohun Bagan","IND","#7A1E2C"],["East Bengal","IND","#F2A900"],
+["Magyarország","NAT","#CE2939"],["Brazil","NAT","#FFDF00"],["Argentina","NAT","#75AADB"],["England","NAT","#f5f5f5"],["France","NAT","#21304D"],["Germany","NAT","#e0e0e0"],["Spain","NAT","#C60B1E"],["Italy","NAT","#0066CC"],["Portugal","NAT","#006600"],["Netherlands","NAT","#F36C21"],["Croatia","NAT","#E2231A"],["Morocco","NAT","#C1272D"],["Japan","NAT","#1B2A8C"],["USA","NAT","#3C3B6E"],["Mexico","NAT","#006847"]
+];
+</script>
+<script>// [name, lat, lng, weight, spread°, localTeams[[name, share]]]
+const CITIES = [
+["Budapest",47.4979,19.0402,9,0.09,[["Ferencváros",.38],["Újpest",.1],["MTK Budapest",.06],["Honvéd",.05],["Magyarország",.06]]],
+["Debrecen",47.5316,21.6273,2,0.05,[["Debreceni VSC",.55]]],["Székesfehérvár",47.186,18.4221,1.5,0.04,[["Videoton / MOL Fehérvár",.45],["Ferencváros",.15]]],["Felcsút",47.4535,18.587,.3,0.02,[["Puskás Akadémia",.6]]],["Győr",47.6875,17.6504,1.5,0.04,[["ETO Győr",.5],["Ferencváros",.12]]],["Miskolc",48.1035,20.7784,1.6,0.05,[["Diósgyőr",.55]]],["Zalaegerszeg",46.8417,16.8416,.8,0.03,[["ZTE",.55]]],["Paks",46.6229,18.8588,.4,0.02,[["Paksi FC",.6]]],["Szeged",46.253,20.1414,1.4,0.04,[["Ferencváros",.3]]],["Pécs",46.0727,18.2323,1.3,0.04,[["Ferencváros",.3]]],
+["London",51.5072,-0.1276,18,0.14,[["Arsenal",.22],["Chelsea",.18],["Tottenham Hotspur",.16],["West Ham United",.1]]],["Manchester",53.4808,-2.2426,7,0.08,[["Manchester United",.4],["Manchester City",.35]]],["Liverpool",53.4084,-2.9916,5,0.06,[["Liverpool",.5],["Everton",.3]]],["Birmingham",52.4862,-1.8904,4,0.07,[["Aston Villa",.45]]],["Newcastle",54.9783,-1.6178,3,0.05,[["Newcastle United",.7]]],["Leeds",53.8008,-1.5491,3,0.05,[["Leeds United",.65]]],["Nottingham",52.9548,-1.1581,2,0.04,[["Nottingham Forest",.6]]],["Brighton",50.8225,-0.1372,1.5,0.03,[["Brighton",.55]]],["Glasgow",55.8642,-4.2518,4,0.06,[["Celtic",.45],["Rangers",.42]]],["Dublin",53.3498,-6.2603,3,0.06,[["Liverpool",.2],["Manchester United",.2],["Celtic",.1]]],
+["Madrid",40.4168,-3.7038,12,0.11,[["Real Madrid",.5],["Atlético Madrid",.28]]],["Barcelona",41.3874,2.1686,10,0.09,[["FC Barcelona",.72]]],["Sevilla",37.3891,-5.9845,4,0.05,[["Sevilla",.42],["Real Betis",.4]]],["Valencia",39.4699,-0.3763,4,0.05,[["Valencia",.55]]],["Bilbao",43.263,-2.935,2.5,0.04,[["Athletic Bilbao",.75]]],["San Sebastián",43.3183,-1.9812,1.5,0.03,[["Real Sociedad",.7]]],
+["München",48.1351,11.582,8,0.09,[["Bayern München",.7]]],["Dortmund",51.5136,7.4653,5,0.06,[["Borussia Dortmund",.75]]],["Gelsenkirchen",51.5177,7.0857,3,0.04,[["Schalke 04",.75]]],["Berlin",52.52,13.405,8,0.12,[["Union Berlin",.25],["Bayern München",.2],["Borussia Dortmund",.12]]],["Hamburg",53.5511,9.9937,5,0.08,[["Hamburger SV",.45],["St. Pauli",.3]]],["Köln",50.9375,6.9603,4,0.06,[["1. FC Köln",.6],["Bayer Leverkusen",.15]]],["Frankfurt",50.1109,8.6821,4,0.06,[["Eintracht Frankfurt",.65]]],["Leipzig",51.3397,12.3731,3,0.05,[["RB Leipzig",.55]]],
+["Milano",45.4642,9.19,9,0.08,[["AC Milan",.42],["Inter",.42]]],["Roma",41.9028,12.4964,8,0.08,[["AS Roma",.48],["Lazio",.3]]],["Torino",45.0703,7.6869,5,0.06,[["Juventus",.65]]],["Napoli",40.8518,14.2681,6,0.07,[["Napoli",.8]]],["Firenze",43.7696,11.2558,2.5,0.04,[["Fiorentina",.7]]],["Bergamo",45.6983,9.6773,1.5,0.03,[["Atalanta",.65]]],
+["Paris",48.8566,2.3522,14,0.12,[["Paris Saint-Germain",.55],["France",.08]]],["Marseille",43.2965,5.3698,5,0.06,[["Olympique de Marseille",.75]]],["Lyon",45.764,4.8357,4,0.06,[["Olympique Lyonnais",.65]]],["Lille",50.6292,3.0573,2.5,0.04,[["LOSC Lille",.6]]],["Monaco",43.7384,7.4246,.6,0.01,[["AS Monaco",.6]]],
+["Amsterdam",52.3676,4.9041,5,0.06,[["Ajax",.65]]],["Rotterdam",51.9244,4.4777,4,0.05,[["Feyenoord",.65]]],["Eindhoven",51.4416,5.4697,2,0.04,[["PSV",.7]]],["Lisboa",38.7223,-9.1393,6,0.07,[["Benfica",.5],["Sporting CP",.35]]],["Porto",41.1579,-8.6291,4,0.05,[["FC Porto",.75]]],
+["İstanbul",41.0082,28.9784,14,0.14,[["Galatasaray",.34],["Fenerbahçe",.33],["Beşiktaş",.2]]],["Athína",37.9838,23.7275,6,0.07,[["Olympiacos",.45],["Panathinaikos",.3]]],["Brugge",51.2093,3.2247,1.2,0.03,[["Club Brugge",.7]]],["Bruxelles",50.8503,4.3517,4,0.06,[["Anderlecht",.45],["Club Brugge",.1]]],["Salzburg",47.8095,13.055,1.2,0.03,[["Red Bull Salzburg",.6]]],["Wien",48.2082,16.3738,6,0.07,[["Rapid Wien",.45],["Bayern München",.1]]],["Praha",50.0755,14.4378,5,0.06,[["Sparta Praha",.4],["Slavia Praha",.38]]],["Warszawa",52.2297,21.0122,6,0.08,[["Legia Warszawa",.6]]],["Zagreb",45.815,15.9819,3,0.05,[["Dinamo Zagreb",.65]]],["Split",43.5081,16.4402,1.5,0.03,[["Hajduk Split",.85]]],["Beograd",44.7866,20.4489,5,0.06,[["Crvena zvezda",.5],["Partizan",.4]]],["București",44.4268,26.1025,6,0.07,[["Steaua București",.5]]],["Kyiv",50.4501,30.5234,6,0.08,[["Dynamo Kyiv",.6],["Shakhtar Donetsk",.15]]],["København",55.6761,12.5683,3,0.05,[["Copenhagen",.6]]],["Malmö",55.605,13.0038,1.5,0.03,[["Malmö FF",.65]]],["Bern",46.948,7.4474,1.2,0.03,[["Young Boys",.65]]],["Basel",47.5596,7.5886,1.2,0.03,[["Basel",.7]]],["Stockholm",59.3293,18.0686,4,0.07,[["Arsenal",.12],["Manchester United",.12]]],["Oslo",59.9139,10.7522,3,0.06,[["Liverpool",.2],["Manchester United",.22]]],
+["Buenos Aires",-34.6037,-58.3816,14,0.14,[["Boca Juniors",.4],["River Plate",.35],["Racing Club",.08],["Independiente",.07]]],["Rio de Janeiro",-22.9068,-43.1729,10,0.1,[["Flamengo",.6],["Brazil",.08]]],["São Paulo",-23.5505,-46.6333,16,0.14,[["Corinthians",.38],["Palmeiras",.27],["São Paulo",.2],["Santos",.06]]],["Porto Alegre",-30.0346,-51.2177,4,0.06,[["Grêmio",.55]]],["Montevideo",-34.9011,-56.1645,4,0.06,[["Peñarol",.45],["Nacional",.42]]],["Santiago",-33.4489,-70.6693,6,0.08,[["Colo-Colo",.55]]],["Medellín",6.2442,-75.5812,4,0.06,[["Club Atlético Nacional",.6]]],["Ciudad de México",19.4326,-99.1332,16,0.15,[["América",.38],["Chivas Guadalajara",.22],["Mexico",.1]]],["Guadalajara",20.6597,-103.3496,6,0.08,[["Chivas Guadalajara",.65]]],
+["Los Angeles",34.0522,-118.2437,10,0.18,[["LA Galaxy",.2],["LAFC",.18],["América",.12],["Chivas Guadalajara",.1]]],["Miami",25.7617,-80.1918,5,0.1,[["Inter Miami",.4],["Argentina",.1]]],["New York",40.7128,-74.006,10,0.14,[["Arsenal",.08],["Real Madrid",.08],["USA",.1]]],["Seattle",47.6062,-122.3321,3,0.07,[["Seattle Sounders",.55]]],["Toronto",43.6532,-79.3832,5,0.08,[["Toronto FC",.4]]],["Chicago",41.8781,-87.6298,5,0.1,[["Chivas Guadalajara",.12],["Manchester United",.08]]],
+["Cairo",30.0444,31.2357,14,0.12,[["Al Ahly",.55],["Zamalek",.3]]],["Johannesburg",-26.2041,28.0473,8,0.1,[["Kaizer Chiefs",.4],["Orlando Pirates",.35]]],["Casablanca",33.5731,-7.5898,6,0.07,[["Raja Casablanca",.4],["Wydad Casablanca",.4]]],["Tunis",36.8065,10.1815,3,0.05,[["Esperance",.6]]],["Lagos",6.5244,3.3792,12,0.12,[["Arsenal",.2],["Chelsea",.2],["Manchester United",.18]]],["Nairobi",-1.2921,36.8219,6,0.08,[["Arsenal",.25],["Manchester United",.2],["Chelsea",.12]]],["Accra",5.6037,-0.187,4,0.06,[["Chelsea",.2],["Manchester United",.18]]],
+["Riyadh",24.7136,46.6753,8,0.1,[["Al Hilal",.45],["Al Nassr",.38]]],["Jeddah",21.4858,39.1925,5,0.08,[["Al Ittihad",.55]]],["Tehran",35.6892,51.389,10,0.1,[["Persepolis",.55]]],["Dubai",25.2048,55.2708,4,0.08,[["Real Madrid",.15],["Manchester United",.12]]],
+["Tokyo",35.6762,139.6503,12,0.14,[["Kashima Antlers",.12],["Urawa Red Diamonds",.14],["Japan",.15]]],["Saitama",35.8617,139.6455,3,0.05,[["Urawa Red Diamonds",.6]]],["Seoul",37.5665,126.978,10,0.1,[["Tottenham Hotspur",.25],["Jeonbuk Motors",.15]]],["Shanghai",31.2304,121.4737,10,0.12,[["Shanghai Port",.3]]],["Mumbai",19.076,72.8777,8,0.1,[["Manchester United",.15],["Liverpool",.12]]],["Kolkata",22.5726,88.3639,7,0.08,[["Mohun Bagan",.4],["East Bengal",.38]]],["Jakarta",-6.2088,106.8456,9,0.1,[["Manchester United",.2],["Real Madrid",.15]]],["Bangkok",13.7563,100.5018,7,0.1,[["Liverpool",.2],["Chelsea",.15]]],["Singapore",1.3521,103.8198,3,0.05,[["Liverpool",.2],["Manchester United",.2]]],
+["Sydney",-33.8688,151.2093,5,0.1,[["Sydney FC",.35],["Liverpool",.1]]],["Melbourne",-37.8136,144.9631,5,0.1,[["Melbourne Victory",.4]]]
+];
+// global clubs pulled into every city
+const GLOBAL = [["Real Madrid",.11],["FC Barcelona",.1],["Manchester United",.08],["Liverpool",.07],["Arsenal",.05],["Chelsea",.05],["Bayern München",.05],["Manchester City",.05],["Paris Saint-Germain",.04],["Juventus",.035],["AC Milan",.03],["Inter",.025],["Borussia Dortmund",.02],["Inter Miami",.015],["Al Nassr",.012]];
+</script>
+<script>
+(() => {
+"use strict";
+const $ = s => document.querySelector(s);
+
+/* ---------- teams ---------- */
+const teamMeta = new Map(TEAMS.map(([n,c,col]) => [n.toLowerCase(), {name:n, country:c, color:col}]));
+const aliases = {"fradi":"Ferencváros","ftc":"Ferencváros","barca":"FC Barcelona","barça":"FC Barcelona","bayern":"Bayern München","man utd":"Manchester United","psg":"Paris Saint-Germain","bvb":"Borussia Dortmund","spurs":"Tottenham Hotspur","juve":"Juventus","dvsc":"Debreceni VSC","dvtk":"Diósgyőr","fehérvár":"Videoton / MOL Fehérvár"};
+function hashColor(s){let h=0;for(const ch of s)h=(h*31+ch.charCodeAt(0))>>>0;return `hsl(${h%360} 70% 58%)`;}
+function canonical(name){const k=name.trim().toLowerCase();const m=teamMeta.get(k)||teamMeta.get((aliases[k]||"").toLowerCase());return m?m.name:name.trim().replace(/\s+/g," ").slice(0,40);}
+function colorOf(name){const m=teamMeta.get(name.toLowerCase());return m?m.color:hashColor(name);}
+function isLight(hex){const c=document.createElement("canvas").getContext("2d");c.fillStyle=hex;const v=c.fillStyle;if(v[0]!=="#")return false;const r=parseInt(v.slice(1,3),16),g=parseInt(v.slice(3,5),16),b=parseInt(v.slice(5,7),16);return (0.299*r+0.587*g+0.114*b)>165;}
+const lightCache=new Map();const light=n=>{if(!lightCache.has(n))lightCache.set(n,isLight(colorOf(n)));return lightCache.get(n);};
+
+/* ---------- privacy: blur before anything is stored ---------- */
+function blur(lat,lng,prec,rnd=Math.random){
+  if(prec==="exact")return [lat,lng];
+  if(prec==="city"){const g=0.05;return [Math.round(lat/g)*g,Math.round(lng/(g/Math.cos(lat*Math.PI/180)))*(g/Math.cos(lat*Math.PI/180))];}
+  const r=(250+rnd()*350)/111320, a=rnd()*Math.PI*2;
+  return [lat+r*Math.sin(a), lng+r*Math.cos(a)/Math.cos(lat*Math.PI/180)];
+}
+
+/* ---------- demo data (seeded, clearly labelled) ---------- */
+function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function makeDemo(n){
+  const rnd=mulberry(20261102), out=[];
+  const tw=CITIES.reduce((s,c)=>s+c[3],0);
+  const gauss=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);};
+  const pools=CITIES.map(c=>{const loc=c[5];const ls=loc.reduce((s,x)=>s+x[1],0);const rest=Math.max(.08,1-ls);const gs=GLOBAL.reduce((s,x)=>s+x[1],0);
+    const items=[...loc.map(x=>[x[0],x[1]]),...GLOBAL.map(x=>[x[0],x[1]/gs*rest])];const tot=items.reduce((s,x)=>s+x[1],0);return {items,tot};});
+  for(let i=0;i<n;i++){
+    let r=rnd()*tw,ci=0;while(r>CITIES[ci][3]){r-=CITIES[ci][3];ci++;}
+    const c=CITIES[ci],pool=pools[ci];let q=rnd()*pool.tot,ti=0;while(q>pool.items[ti][1]&&ti<pool.items.length-1){q-=pool.items[ti][1];ti++;}
+    const s=c[4]*(0.35+rnd()*0.9);
+    const lat=c[1]+gauss()*s*0.7, lng=c[2]+gauss()*s/Math.cos(c[1]*Math.PI/180);
+    const pr=rnd(), prec=pr<.5?"area":pr<.8?"exact":"city";
+    const [bl,bg]=blur(lat,lng,prec,rnd);
+    out.push({t:pool.items[ti][0],lat:bl,lng:bg,p:prec,demo:true});
+  }
+  return out;
+}
+const DEMO=makeDemo(24000);
+
+/* ---------- state ---------- */
+let view="pins", filter=null, showDemo=true;
+let real=new Map();            // id -> pin from shared store
+let localOnly=null;            // pin kept in memory when the store is unavailable
+let db=null, uid=null, myPin=null;
+const LS="fap.mypin";
+try{const v=JSON.parse(localStorage.getItem(LS)||"null");if(v&&typeof v.t==="string")localOnly={...v,demo:false};}catch(_){}
+function points(){const arr=showDemo?DEMO.slice():[];for(const p of real.values())arr.push(p);if(localOnly)arr.push(localOnly);return arr;}
+
+/* ---------- map ---------- */
+mapboxgl.accessToken="pk.eyJ1IjoiZ2VyaXZhZ3lvayIsImEiOiJjbXZ6aGQ0OW8xanJwMnhzOW83YWs3a2VpIn0.PNP7EFmgBNIz1eceFpotkw";
+const __t=(()=>{try{const v=localStorage.getItem("fap.theme");if(v==="light"||v==="dark")return v;}catch(_){}return matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";})();
+let curStyle=__t==="dark"?"mapbox://styles/mapbox/dark-v11":"mapbox://styles/mapbox/light-v11";
+const map=new mapboxgl.Map({container:"map",style:curStyle,language:"hu",center:[12,40],zoom:2.1,minZoom:1,maxZoom:19,customAttribution:"FAP"});
+map.addControl(new mapboxgl.NavigationControl({showCompass:false}),"bottom-right");
+map.addControl(new mapboxgl.GeolocateControl({positionOptions:{enableHighAccuracy:false},showUserLocation:false}),"bottom-right");
+map.dragRotate.disable();map.touchZoomRotate.disableRotation();
+map.on("style.load",()=>{const dk=/dark/.test(curStyle);try{map.setFog(dk?{color:"#16181c","high-color":"#0e1013","space-color":"#0b0c0e","horizon-blend":.06,"star-intensity":0}:{color:"#f4f5f7","high-color":"#dfe3ea","space-color":"#eef0f3","horizon-blend":.08,"star-intensity":0});}catch(_){}if(typeof setupLayers==="function")setupLayers();});
+
+/* two clustered sources: "all" (donut clusters by team share) and "one" (a single team) */
+let ready=false, topKeys=[];
+const OTHER="var(--wash-2)";
+const PAL={light:{paper:"#ffffff",ocean:"#e4e7ec",land:"#fbfbfc",coast:"#d4d8de",border:"#e2e5ea",accent:"#3355ff",top:"#16181c",style:"mapbox://styles/mapbox/light-v11"},
+           dark:{paper:"#1b1d21",ocean:"#0e1013",land:"#1f2226",coast:"#2c3036",border:"#272a30",accent:"#6680ff",top:"#ffffff",style:"mapbox://styles/mapbox/dark-v11"}};
+let theme=(()=>{try{const v=localStorage.getItem("fap.theme");if(v==="light"||v==="dark")return v;}catch(_){}const d=document.documentElement.dataset.theme;if(d==="light"||d==="dark")return d;return matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";})();
+const P=()=>PAL[theme];
+function heatRamp(){const a=P().accent;return ["interpolate",["linear"],["heatmap-density"],0,"rgba(80,100,255,0)",.15,"rgba(80,100,255,.18)",.4,"rgba(80,100,255,.5)",.7,a,.9,theme==="dark"?"#8fa2ff":"#1e2fa8",1,theme==="dark"?"#c9d2ff":"#16181c"];}
+function applyMapTheme(){
+  const p=P();
+  const set=(l,k,v)=>{if(map.getLayer(l))map.setPaintProperty(l,k,v);};
+  set("bg","background-color",p.ocean);set("land","fill-color",p.land);set("coast","line-color",p.coast);set("borders","line-color",p.border);
+  for(const id of ["all","one"]){set(id+"-c","circle-stroke-color",p.paper);set(id+"-u","circle-stroke-color",["case",["==",["get","d"],0],p.accent,p.paper]);}
+  set("heatL","heatmap-color",heatRamp());
+}
+function applyTheme(t,persist){
+  theme=t;document.documentElement.dataset.theme=t;document.documentElement.classList.toggle("is-dark",t==="dark");
+  if(persist){try{localStorage.setItem("fap.theme",t);}catch(_){}}
+  onThemeMap();
+}
+let onThemeMap=()=>{if(ready)applyMapTheme();};
+function fc(arr){return {type:"FeatureCollection",features:arr.map(p=>({type:"Feature",properties:{t:p.t,c:colorOf(p.t),p:p.p,d:p.demo?1:0},geometry:{type:"Point",coordinates:[p.lng,p.lat]}}))};}
+function addClusterSource(id,data,props){
+  if(map.getLayer(id+"-c"))map.removeLayer(id+"-c");
+  if(map.getLayer(id+"-u"))map.removeLayer(id+"-u");
+  if(map.getSource(id))map.removeSource(id);
+  map.addSource(id,{type:"geojson",data,cluster:true,clusterRadius:48,clusterMaxZoom:15,clusterProperties:props||{}});
+  map.addLayer({id:id+"-c",type:"circle",source:id,filter:["has","point_count"],paint:{
+    "circle-color":id==="one"?"#888":"rgba(0,0,0,0)","circle-opacity":.9,"circle-stroke-color":P().paper,"circle-stroke-width":id==="one"?2:0,
+    "circle-radius":["step",["get","point_count"],12,10,15,50,19,200,24,1000,30,4000,37]}});
+  map.addLayer({id:id+"-u",type:"circle",source:id,filter:["!",["has","point_count"]],paint:{
+    "circle-color":["get","c"],"circle-radius":["interpolate",["linear"],["zoom"],4,3.5,14,7],
+    "circle-stroke-color":["case",["==",["get","d"],0],P().accent,P().paper],"circle-stroke-width":["case",["==",["get","d"],0],2.5,1.2]}});
+}
+function rebuild(){
+  if(!ready)return;
+  const pts=points();
+  const groups=new Map();for(const p of pts)groups.set(p.t,(groups.get(p.t)||0)+1);
+  map.getSource("heat").setData(fc(pts));
+  const top=[...groups.entries()].sort((a,b)=>b[1]-a[1]).slice(0,40).map(x=>x[0]);
+  const allData=fc(pts);
+  if(top.join("|")!==topKeys.join("|")||!map.getSource("all")){
+    topKeys=top;const props={};top.forEach((t,i)=>{props["k"+i]=["+",["case",["==",["get","t"],t],1,0]];});
+    addClusterSource("all",allData,props);
+  } else map.getSource("all").setData(allData);
+  updateOne(pts);
+  applyVisibility();renderStats(groups,pts.length);scheduleLabels();
+}
+function updateOne(pts){
+  pts=pts||points();
+  const arr=filter?pts.filter(p=>p.t===filter):[];
+  const col=filter?colorOf(filter):"#000";
+  addClusterSource("one",fc(arr));map.setPaintProperty("one-c","circle-color",col);
+}
+function applyVisibility(){
+  const all=view==="pins"&&!filter, one=view==="pins"&&!!filter;
+  for(const [id,on] of [["all",all],["one",one]])for(const L of ["-c","-u"])if(map.getLayer(id+L))map.setLayoutProperty(id+L,"visibility",on?"visible":"none");
+  map.setLayoutProperty("heatL","visibility",view==="heat"?"visible":"none");
+  map.setFilter("heatL",filter?["==",["get","t"],filter]:null);
+  clearLabels();scheduleLabels();
+}
+async function onClick(e,src){
+  if(picking)return;
+  const f=e.features[0];
+  if(f.properties.point_count){zoomCluster(src,f.properties.cluster_id,f.geometry.coordinates);return;}
+  const t=f.properties.t;
+  const pl={exact:"pontos hely",area:"környék (±600 m)",city:"város szint"}[f.properties.p]||"";
+  const el=document.createElement("div");
+  const a=document.createElement("div");a.className="pop-t";const d=document.createElement("span");d.className="dot";d.style.background=colorOf(t);a.append(d,document.createTextNode(t+" szurkoló"));
+  const b=document.createElement("div");b.className="pop-s";b.textContent=pl+(f.properties.d?" · demó":" · valódi bejelölés");
+  el.append(a,b);
+  new mapboxgl.Popup({offset:10,closeButton:false}).setLngLat(f.geometry.coordinates).setDOMContent(el).addTo(map);
+}
+async function zoomCluster(src,id,center){
+  map.getSource(src).getClusterExpansionZoom(id,(err,z)=>{if(err||z==null)return;map.easeTo({center,zoom:Math.min(z+0.2,19)});});
+}
+for(const src of ["all","one"])for(const L of ["-c","-u"]){
+  map.on("click",src+L,e=>onClick(e,src));
+  map.on("mouseenter",src+L,()=>{if(!picking)map.getCanvas().style.cursor="pointer";});
+  map.on("mouseleave",src+L,()=>{if(!picking)map.getCanvas().style.cursor="";});
+}
+
+/* cluster markers drawn as HTML: team-share donuts (all) or numbered team bubbles (one) */
+let labels=new Map(),labelTimer=0;
+function scheduleLabels(){if(labelTimer)return;labelTimer=setTimeout(()=>{labelTimer=0;updateLabels();},60);}
+function clearLabels(){for(const m of labels.values())m.remove();labels=new Map();}
+function fmt(n){return n>=10000?Math.round(n/1000)+"k":n>=1000?(n/1000).toFixed(1).replace(".0","")+"k":String(n);}
+function radiusFor(n){return n<10?12:n<50?15:n<200?19:n<1000?24:n<4000?30:37;}
+function donut(props){
+  const n=props.point_count,r=radiusFor(n)+3,w=Math.max(4,r*.22),R=r-w/2,C=2*Math.PI*R;
+  const parts=topKeys.map((t,i)=>[colorOf(t),props["k"+i]||0]);
+  const known=parts.reduce((s,x)=>s+x[1],0);parts.push([OTHER,Math.max(0,n-known)]);
+  let off=0,segs="";
+  for(const [col,v] of parts){if(!v)continue;const len=v/n*C;segs+=`<circle r="${R}" cx="${r}" cy="${r}" fill="none" style="stroke:${col}" stroke-width="${w}" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 ${r} ${r})"/>`;off+=len;}
+  const el=document.createElement("div");el.className="donut";el.style.width=el.style.height=(2*r)+"px";
+  el.innerHTML=`<svg width="${2*r}" height="${2*r}" viewBox="0 0 ${2*r} ${2*r}" aria-hidden="true"><circle r="${r-.5}" cx="${r}" cy="${r}" style="fill:var(--paper)"/>${segs}</svg><b>${fmt(n)}</b>`;
+  const lead=parts.slice(0,-1).sort((a,b)=>b[1]-a[1])[0];
+  el.title=n+" szurkoló"+(lead&&lead[1]?" · legtöbb: "+topKeys[parts.findIndex(p=>p===lead)]:"");
+  return el;
+}
+function updateLabels(){
+  if(!ready)return;
+  const next=new Map();
+  const src=view!=="pins"?null:filter?"one":"all";
+  if(src){
+    let feats=[];try{feats=map.querySourceFeatures(src,{filter:["has","point_count"]});}catch(_){}
+    for(const f of feats){
+      const key=src+":"+f.properties.cluster_id;if(next.has(key))continue;
+      let m=labels.get(key);
+      if(!m){
+        let el;
+        if(src==="all"){el=donut(f.properties);el.addEventListener("click",ev=>{ev.stopPropagation();if(!picking)zoomCluster("all",f.properties.cluster_id,f.geometry.coordinates);});}
+        else{el=document.createElement("div");el.className="cl"+(light(filter)?" dark":"");el.textContent=fmt(f.properties.point_count);}
+        m=new mapboxgl.Marker({element:el}).setLngLat(f.geometry.coordinates).addTo(map);
+      }
+      next.set(key,m);
+    }
+  }
+  for(const [k,m] of labels)if(!next.has(k))m.remove();
+  labels=next;
+}
+map.on("moveend",scheduleLabels);
+map.on("idle",scheduleLabels);
+map.on("sourcedata",e=>{if(e.isSourceLoaded&&(e.sourceId==="all"||e.sourceId==="one"))scheduleLabels();});
+map.on("zoomend",()=>{clearLabels();scheduleLabels();});
+
+function setupLayers(){
+  if(map.getSource("heat"))return;
+  map.addSource("heat",{type:"geojson",data:fc([])});
+  map.addLayer({id:"heatL",type:"heatmap",source:"heat",layout:{visibility:"none"},paint:{
+    "heatmap-weight":["interpolate",["linear"],["zoom"],1,.01,5,.04,9,.2,13,1],
+    "heatmap-intensity":1,
+    "heatmap-radius":["interpolate",["linear"],["zoom"],1,10,5,22,10,30,14,36],
+    "heatmap-opacity":.85,
+    "heatmap-color":heatRamp()}});
+  ready=true;topKeys=[];rebuild();applyMapTheme();
+}
+map.on("load",setupLayers);
+$("#themeBtn").onclick=()=>applyTheme(theme==="dark"?"light":"dark",true);
+onThemeMap=()=>{const want=P().style;if(want!==curStyle){curStyle=want;ready=false;clearLabels();map.setStyle(want,{diff:false});}else if(ready)applyMapTheme();};
+applyTheme(theme,false);
+
+/* ---------- board ---------- */
+let lastGroups=null,lastTotal=0;
+function renderStats(groups,total){lastGroups=groups;lastTotal=total;
+  $("#sTotal").textContent=total.toLocaleString("hu-HU");
+  $("#sTeams").textContent="szurkoló · "+groups.size+" csapat";
+  const top=[...groups.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const max=top[0]?top[0][1]:1;const ul=$("#teamList");ul.replaceChildren();
+  for(const [t,n] of top){
+    const li=document.createElement("li"),b=document.createElement("button");b.setAttribute("aria-pressed",String(filter===t));
+    const d=document.createElement("span");d.className="dot";d.style.background=colorOf(t);
+    const nm=document.createElement("span");nm.textContent=t;const c=document.createElement("span");c.className="n";c.textContent=n.toLocaleString("hu-HU");
+    const bar=document.createElement("span");bar.className="bar";const bi=document.createElement("i");bi.style.width=(n/max*100)+"%";bi.style.background=colorOf(t);bar.append(bi);
+    b.append(d,nm,c,bar);b.onclick=()=>setFilter(filter===t?null:t);li.append(b);ul.append(li);
+  }
+  renderFilter();
+}
+function renderFilter(){
+  const box=$("#filterBox");box.replaceChildren();
+  if(!filter)return;
+  const chip=document.createElement("div");chip.className="filter-chip";const d=document.createElement("span");d.className="dot";d.style.background=colorOf(filter);
+  const n=document.createElement("span");n.textContent=filter;n.style.flex="1";const x=document.createElement("button");x.textContent="✕";x.setAttribute("aria-label","Szűrő törlése");x.onclick=()=>setFilter(null);
+  chip.append(d,n,x);box.append(chip);
+}
+function setFilter(t){filter=t;updateOne();applyVisibility();if(lastGroups)renderStats(lastGroups,lastTotal);}
+function setView(v){view=v;$("#vPins").setAttribute("aria-pressed",String(v==="pins"));$("#vHeat").setAttribute("aria-pressed",String(v==="heat"));applyVisibility();}
+$("#vPins").onclick=()=>setView("pins");$("#vHeat").onclick=()=>setView("heat");
+$("#demoToggle").onchange=e=>{showDemo=e.target.checked;rebuild();};
+
+/* ---------- sign-up sheet ---------- */
+let chosenTeam=null, pickLL=null, picking=false, pendingMarker=null, myMarker=null;
+const sheet=$("#sheet");
+$("#openSheet").onclick=()=>{sheet.hidden=false;document.body.classList.add("sheet-open");$("#teamInput").focus();};
+$("#closeSheet").onclick=()=>{sheet.hidden=true;document.body.classList.remove("sheet-open");stopPick();};
+for(const c of [...CITIES].sort((a,b)=>a[0].localeCompare(b[0],"hu"))){const o=document.createElement("option");o.value=c[1]+","+c[2];o.textContent=c[0];$("#citySel").append(o);}
+
+const ti=$("#teamInput"),opts=$("#teamOpts");let optIdx=0,optList=[];
+function showOpts(){
+  const q=ti.value.trim().toLowerCase();
+  if(!q){opts.hidden=true;ti.setAttribute("aria-expanded","false");return;}
+  const al=aliases[q];
+  optList=TEAMS.filter(([n])=>n.toLowerCase().includes(q)||(al&&n===al)).slice(0,8).map(x=>x[0]);
+  const exact=optList.some(n=>n.toLowerCase()===q);
+  if(!exact)optList.push({custom:ti.value.trim().slice(0,40)});
+  optIdx=0;opts.replaceChildren();
+  optList.forEach((o,i)=>{const li=document.createElement("li");li.setAttribute("role","option");li.setAttribute("aria-selected",String(i===optIdx));
+    const name=typeof o==="string"?o:o.custom;const d=document.createElement("span");d.className="dot";d.style.background=colorOf(name);
+    const s=document.createElement("span");s.textContent=typeof o==="string"?o:`Új csapat: „${o.custom}”`;const sm=document.createElement("small");sm.textContent=typeof o==="string"?(teamMeta.get(o.toLowerCase()).country==="NAT"?"VÁLOGATOTT":teamMeta.get(o.toLowerCase()).country):"SAJÁT";
+    li.append(d,s,sm);li.onmousedown=ev=>{ev.preventDefault();pickTeam(name);};opts.append(li);});
+  opts.hidden=false;ti.setAttribute("aria-expanded","true");
+}
+function pickTeam(name){chosenTeam=canonical(name);ti.value=chosenTeam;opts.hidden=true;ti.setAttribute("aria-expanded","false");$("#st1").classList.add("done");validate();}
+ti.addEventListener("input",()=>{chosenTeam=null;$("#st1").classList.remove("done");showOpts();validate();});
+ti.addEventListener("keydown",e=>{
+  if(opts.hidden)return;const items=[...opts.children];
+  if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();optIdx=(optIdx+(e.key==="ArrowDown"?1:-1)+items.length)%items.length;items.forEach((li,i)=>li.setAttribute("aria-selected",String(i===optIdx)));}
+  else if(e.key==="Enter"){e.preventDefault();const o=optList[optIdx];pickTeam(typeof o==="string"?o:o.custom);}
+  else if(e.key==="Escape"){opts.hidden=true;}
+});
+ti.addEventListener("blur",()=>{setTimeout(()=>{opts.hidden=true;},120);});
+
+function setPick(lng,lat,label){
+  pickLL=[lat,lng];
+  if(!pendingMarker){const el=document.createElement("div");el.className="me pending";pendingMarker=new mapboxgl.Marker({element:el,draggable:true}).setLngLat([lng,lat]).addTo(map);
+    pendingMarker.on("dragend",()=>{const p=pendingMarker.getLngLat();setPick(p.lng,p.lat);});}
+  else pendingMarker.setLngLat([lng,lat]);
+  const b=$("#pickedBox");b.classList.add("on");b.textContent=(label?label+" · ":"")+lat.toFixed(3)+", "+lng.toFixed(3);
+  $("#st2").classList.add("done");validate();
+}
+function startPick(){picking=true;$("#pickHint").hidden=false;map.getCanvas().style.cursor="crosshair";if(innerWidth<=720)sheet.hidden=true;}
+function stopPick(){picking=false;$("#pickHint").hidden=true;map.getCanvas().style.cursor="";}
+$("#pickBtn").onclick=startPick;
+map.on("click",e=>{if(!picking)return;setPick(e.lngLat.lng,e.lngLat.lat);stopPick();sheet.hidden=false;});
+$("#citySel").onchange=e=>{if(!e.target.value)return;const [la,ln]=e.target.value.split(",").map(Number);setPick(ln,la,e.target.selectedOptions[0].textContent);map.flyTo({center:[ln,la],zoom:11});};
+const HINTS={area:"±500 m-rel elmosva",city:"5 km-es rácsra igazítva",exact:"Pontosan ott, ahová jelölöd"};
+document.querySelectorAll('input[name="prec"]').forEach(r=>r.addEventListener("change",()=>{$("#precHint").textContent=HINTS[r.value];}));
+function validate(){$("#saveBtn").disabled=!(chosenTeam&&pickLL);}
+function setStatus(msg,err){const s=$("#status");s.textContent=msg;s.classList.toggle("err",!!err);}
+
+function showMine(p){
+  if(myMarker){myMarker.remove();myMarker=null;}
+  $("#myRow").hidden=!p;
+  if(!p)return;
+  const el=document.createElement("div");el.className="me";el.title="Te ("+p.t+")";
+  myMarker=new mapboxgl.Marker({element:el}).setLngLat([p.lng,p.lat]).addTo(map);
+}
+$("#saveBtn").onclick=async()=>{
+  const prec=document.querySelector('input[name="prec"]:checked').value;
+  const [bl,bg]=blur(pickLL[0],pickLL[1],prec);
+  const pin={t:chosenTeam,lat:+bl.toFixed(6),lng:+bg.toFixed(6),p:prec,ts:Date.now()};
+  $("#saveBtn").disabled=true;
+  if(pendingMarker){pendingMarker.remove();pendingMarker=null;}
+  if(db&&uid){
+    try{await db.collection("pins").doc(uid).set(pin);myPin=pin;setStatus("Fent vagy.");}
+    catch(e){localOnly={...pin,demo:false};myPin=localOnly;setStatus("Nem sikerült menteni, csak nálad látszik.",true);rebuild();}
+  } else {localOnly={...pin,demo:false};myPin=localOnly;try{localStorage.setItem(LS,JSON.stringify(pin));}catch(_){}setStatus("Fent vagy (csak ezen az eszközön).");rebuild();}
+  showMine(myPin);map.flyTo({center:[pin.lng,pin.lat],zoom:Math.max(map.getZoom(),12)});validate();
+};
+$("#delBtn").onclick=async()=>{
+  if(db&&uid&&!localOnly){try{await db.collection("pins").doc(uid).delete();}catch(_){setStatus("Nem sikerült törölni, próbáld újra.",true);return;}}
+  localOnly=null;myPin=null;try{localStorage.removeItem(LS);}catch(_){}showMine(null);rebuild();setStatus("Törölve.");
+};
+
+/* ---------- shared store ---------- */
+function clean(d){
+  if(!d||typeof d.t!=="string")return null;const t=d.t.trim().slice(0,40);if(!t)return null;
+  const lat=+d.lat,lng=+d.lng;if(!isFinite(lat)||!isFinite(lng)||Math.abs(lat)>85||Math.abs(lng)>180)return null;
+  return {t:canonical(t),lat,lng,p:["exact","area","city"].includes(d.p)?d.p:"area",demo:false};
+}
+(async()=>{
+  const use=window.claude&&window.claude.use;
+  if(!use){$("#modeNote").textContent="";if(localOnly){myPin=localOnly;map.once("load",()=>showMine(localOnly));}return;}
+  const [dbNs,userNs]=await Promise.all([window.claude.use("db"),window.claude.use("user")]);
+  db=dbNs;if(!db){$("#modeNote").textContent="Csak helyi";return;}
+  try{uid=userNs?await userNs.id():null;}catch(_){uid=null;}
+  if(!uid){db=null;$("#modeNote").textContent="Csak helyi";return;}
+  const timer=setTimeout(()=>{$("#modeNote").textContent="Kapcsolódás…";},10000);
+  db.collection("pins").onSnapshot(snap=>{
+    if(!snap.metadata.fromCache)clearTimeout(timer);
+    const m=new Map();for(const d of snap.docs){const p=clean(d.data());if(p)m.set(d.id,p);}
+    real=m;const mine=m.get(uid);
+    if(mine&&!localOnly){myPin=mine;showMine(mine);}
+    $("#modeNote").textContent=m.size+" élő";
+    rebuild();
+  },err=>{clearTimeout(timer);$("#modeNote").textContent="Offline";db=null;});
+})();
+})();
+</script>
+
+</body>
+</html>
