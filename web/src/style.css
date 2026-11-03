@@ -141,7 +141,7 @@ body.sheet-open .cta{display:none}
 .pickhint{position:fixed;z-index:7;left:50%;transform:translateX(-50%);bottom:calc(26px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);font-weight:600;padding:15px 22px;border-radius:999px;box-shadow:var(--shadow);white-space:nowrap}
 
 /* markers */
-.donut{display:grid;place-items:center;cursor:pointer;filter:drop-shadow(0 3px 8px rgba(22,24,28,.18))}
+.donut{display:grid;place-items:center;cursor:pointer;opacity:.9;filter:drop-shadow(0 2px 4px rgba(22,24,28,.14))}
 .donut svg{position:absolute;inset:0}
 .donut b{position:relative;font:600 12px/1 var(--f-body);font-variant-numeric:tabular-nums;color:var(--ink)}
 .cl{font:600 12px/1 var(--f-body);font-variant-numeric:tabular-nums;pointer-events:none;color:#fff}
@@ -320,7 +320,8 @@ a.privacy{text-decoration:none}
 .consent-actions{display:flex;gap:8px}
 
 /* first-visit welcome: over everything, the consent card waits underneath */
-.welcome{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:16px;box-sizing:border-box;
+.welcome{position:fixed;inset:0;z-index:20;display:grid;place-items:center;box-sizing:border-box;
+  padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
   background:color-mix(in srgb,var(--space) 45%,transparent);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);animation:wl-in .25s ease-out}
 .welcome[hidden]{display:none}
 .welcome-card{width:100%;max-width:400px;box-sizing:border-box;background:var(--paper);color:var(--ink);border-radius:var(--r-lg);box-shadow:var(--shadow);
@@ -332,6 +333,14 @@ a.privacy{text-decoration:none}
 .wl-n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--wash);color:var(--cobalt);display:grid;place-items:center;font:700 12px/1 var(--f-display)}
 .welcome-card .save{margin-top:4px}
 @keyframes wl-in{from{opacity:0}to{opacity:1}}
+.mt-card{gap:14px;max-height:min(560px,calc(100dvh - 32px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)))}
+.mt-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.mt-head h2{font-size:24px}
+.mt-card .teams{overflow-y:auto;margin:0 -6px;padding:0 6px}
+.gate-btns{display:flex;gap:8px;flex-wrap:wrap}
+.guest-tag{vertical-align:1px;color:var(--cobalt)}
+.mt-more{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:600}
+.mt-more .n{color:var(--mute);font-weight:500}
 
 /* guided tour: a lit-up hole over the explained part, the rest dimmed; the tip card sits next to it */
 .tour{position:fixed;inset:0;z-index:21}
@@ -350,7 +359,7 @@ a.privacy{text-decoration:none}
   .consent{left:calc(10px + env(safe-area-inset-left,0px));right:calc(10px + env(safe-area-inset-right,0px));bottom:calc(10px + env(safe-area-inset-bottom,0px));width:auto}
   .board-head{align-items:center}
   .acct-btn{display:grid}
-  .account{display:none;top:auto;bottom:0;left:0;right:0;width:auto;z-index:7;border-radius:26px 26px 0 0;padding:20px;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
+  .account{display:none;top:auto;bottom:0;left:0;right:0;width:auto;z-index:7;max-height:calc(100% - 20px - env(safe-area-inset-top,0px));overflow-y:auto;box-sizing:border-box;border-radius:26px 26px 0 0;padding:20px;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
   body.acct-open .account{display:flex}
   body.acct-open .cta{display:none}
   .acct-close{display:block}
@@ -368,6 +377,10 @@ a.privacy{text-decoration:none}
   .seg,#filterBox,.area,#teamSearch,.foot,#teamHint{margin-left:6px;margin-right:6px}
   .teams li button{padding:8px 10px}
   body.sheet-open .board{display:none}
+  /* tribe sheet: a grip on top; dragged or flicked up it takes the whole screen (tribes.js) */
+  .tribe-sheet::before{content:"";position:absolute;top:8px;left:50%;width:38px;height:4px;margin-left:-19px;border-radius:2px;background:var(--wash-2)}
+  .tribe-sheet{transition:transform .2s ease-out}
+  .tribe-sheet.full{top:0;max-height:none;border-radius:0;padding-top:calc(26px + env(safe-area-inset-top,0px))}
   .sheet{top:auto;bottom:0;left:0;right:0;width:auto;max-height:82%;border-radius:26px 26px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom,0px));padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));gap:20px}
   .cta{bottom:calc(18px + env(safe-area-inset-bottom,0px))}
 }

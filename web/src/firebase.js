@@ -7,7 +7,7 @@ import {
 } from "firebase/auth";
 import {
   getFirestore, connectFirestoreEmulator, collection, doc, onSnapshot, setDoc, getDoc, deleteDoc, updateDoc, serverTimestamp,
-  writeBatch, increment, query, orderBy, limit, arrayUnion, arrayRemove, deleteField, FieldPath, getDocs, where, collectionGroup,
+  writeBatch, increment, query, orderBy, limit, arrayUnion, arrayRemove, deleteField, FieldPath, getDocs, where, collectionGroup, Timestamp,
 } from "firebase/firestore";
 import { deleteUser } from "firebase/auth";
 
@@ -238,6 +238,14 @@ export async function joinTribe(tid, team, nick, ref) {
 }
 // A captain hands the captaincy to the longest-standing member; the last member (always the captain) takes
 // the tribe with them, after clearing its feed. Returns { deleted, heir } (heir: the new captain's nick).
+// guest: from anywhere, for 3 days (a few minutes short, for clock skew), no XP and no team slot; leaving works as usual
+export const GUEST_MS = 72 * 3600e3 - 5 * 60e3;
+export async function joinAsGuest(tid, nick) {
+  const me = uid(), b = writeBatch(db), until = Date.now() + GUEST_MS;
+  b.set(doc(db, "tribes", tid, "members", me), { nick, role: "guest", joinedAt: serverTimestamp(), until: Timestamp.fromMillis(until) });
+  b.update(doc(db, "tribes", tid), { memberCount: increment(1), lastActivityAt: serverTimestamp() });
+  await b.commit(); return until;
+}
 export async function leaveTribe(tid, team) {
   const me = uid(), mine = await getDoc(doc(db, "tribes", tid, "members", me));
   const captain = mine.data()?.role === "captain";
@@ -272,18 +280,18 @@ export const watchPosts = (tid, cb, onError) =>
 export const watchReplies = (tid, pid, cb) =>
   onSnapshot(query(collection(db, "tribes", tid, "posts", pid, "replies"), orderBy("createdAt", "asc"), limit(100)), s => cb(s.docs.map(snapData)), () => cb([]));
 
-export function createPost(tid, nick, text) {
+export function createPost(tid, nick, text, guest = false) {
   const b = writeBatch(db), me = uid();
   b.update(doc(db, "tribes", tid, "members", me), { lastPostAt: serverTimestamp() });
-  b.set(doc(collection(db, "tribes", tid, "posts")), { authorUid: me, nick, type: "text", text, createdAt: serverTimestamp(), replyCount: 0, reportCount: 0, hidden: false });
+  b.set(doc(collection(db, "tribes", tid, "posts")), { authorUid: me, nick, type: "text", text, createdAt: serverTimestamp(), replyCount: 0, reportCount: 0, hidden: false, ...(guest ? { guest: true } : {}) });
   b.update(doc(db, "tribes", tid), { lastActivityAt: serverTimestamp() });
   return b.commit();
 }
-export function createReply(tid, pid, nick, text) {
+export function createReply(tid, pid, nick, text, guest = false) {
   const b = writeBatch(db), me = uid();
   b.update(doc(db, "tribes", tid, "members", me), { lastPostAt: serverTimestamp() });
   b.update(doc(db, "tribes", tid, "posts", pid), { replyCount: increment(1) });
-  b.set(doc(collection(db, "tribes", tid, "posts", pid, "replies")), { authorUid: me, nick, text, createdAt: serverTimestamp(), hidden: false });
+  b.set(doc(collection(db, "tribes", tid, "posts", pid, "replies")), { authorUid: me, nick, text, createdAt: serverTimestamp(), hidden: false, ...(guest ? { guest: true } : {}) });
   return b.commit();
 }
 export function reportPost(tid, pid, reason) {

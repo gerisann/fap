@@ -109,7 +109,7 @@ function addClusterSource(id, data, keys) {
   if (map.getSource(id)) map.removeSource(id);
   map.addSource(id, { type: "geojson", data, cluster: true, clusterRadius: 48, clusterMaxZoom: 15, clusterProperties: keyProps(keys) });
   map.addLayer({ id: id + "-c", type: "circle", source: id, filter: ["has", "point_count"], paint: {
-    "circle-color": "rgba(0,0,0,0)", "circle-radius": ["step", ["get", "n"], 12, 10, 15, 50, 19, 200, 24, 1000, 30, 4000, 37, 40000, 42, 400000, 46] } });
+    "circle-color": "rgba(0,0,0,0)", "circle-radius": ["+", 11, ["*", 2.6, ["log10", ["max", 1, ["get", "n"]]]]] } }); // = radiusFor() + 3
   map.addLayer({ id: id + "-u", type: "circle", source: id, filter: ["all", ["!", ["has", "point_count"]], ["!=", ["get", "m"], 1]], paint: {
     "circle-color": ["get", "c"], "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3.5, 14, 7],
     "circle-stroke-color": ["case", ["==", ["get", "d"], 0], P().accent, P().paper], "circle-stroke-width": ["case", ["==", ["get", "d"], 0], 2.5, 1.2] } });
@@ -167,15 +167,16 @@ let labels = new Map(), labelTimer = 0;
 function scheduleLabels() { if (labelTimer) return; labelTimer = setTimeout(() => { labelTimer = 0; updateLabels(); }, 60); }
 function clearLabels() { for (const m of labels.values()) m.remove(); labels = new Map(); }
 function fmt(n) { return n >= 1e6 ? (n / 1e6).toFixed(1).replace(".0", "") + "M" : n >= 10000 ? Math.round(n / 1000) + "k" : n >= 1000 ? (n / 1000).toFixed(1).replace(".0", "") + "k" : String(n); }
-function radiusFor(n) { return n < 10 ? 12 : n < 50 ? 15 : n < 200 ? 19 : n < 1000 ? 24 : n < 4000 ? 30 : n < 40000 ? 37 : n < 400000 ? 42 : 46; }
+// log scale: 10 fans → 11 px, 1k → 16, 10k → 18, 1M → 24; the weighted demo made a step scale max out everywhere
+function radiusFor(n) { return Math.round(8 + 2.6 * Math.log10(Math.max(1, n))); }
 function donut(props, keys) {
-  const n = props.n ?? props.point_count, r = radiusFor(n) + 3, w = Math.max(4, r * .22), R = r - w / 2, C = 2 * Math.PI * R;
+  const n = props.n ?? props.point_count, r = radiusFor(n) + 3, w = Math.max(3, r * .17), R = r - w / 2, C = 2 * Math.PI * R;
   const parts = keys.map((tm, i) => [colorOf(tm), props["k" + i] || 0]);
   const known = parts.reduce((s, x) => s + x[1], 0); parts.push([OTHER, Math.max(0, n - known)]);
   let off = 0, segs = "";
   for (const [col, v] of parts) { if (!v) continue; const len = v / n * C; segs += `<circle r="${R}" cx="${r}" cy="${r}" fill="none" style="stroke:${col}" stroke-width="${w}" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}" transform="rotate(-90 ${r} ${r})"/>`; off += len; }
   const el = document.createElement("div"); el.className = "donut"; el.style.width = el.style.height = (2 * r) + "px";
-  el.innerHTML = `<svg width="${2 * r}" height="${2 * r}" viewBox="0 0 ${2 * r} ${2 * r}" aria-hidden="true"><circle r="${r - .5}" cx="${r}" cy="${r}" style="fill:var(--paper)"/>${segs}</svg><b>${fmt(n)}</b>`;
+  el.innerHTML = `<svg width="${2 * r}" height="${2 * r}" viewBox="0 0 ${2 * r} ${2 * r}" aria-hidden="true"><circle r="${r - .5}" cx="${r}" cy="${r}" style="fill:var(--paper)" fill-opacity=".55"/>${segs}</svg><b style="font-size:${r < 17 ? 10 : r < 21 ? 11 : 12}px">${fmt(n)}</b>`;
   const lead = parts.slice(0, -1).sort((a, b) => b[1] - a[1])[0];
   el.title = t("clusterTitle", { n: num(n) }) + (lead && lead[1] ? " · " + t("mostFans", { team: keys[parts.indexOf(lead)] }) : "");
   return el;
@@ -571,14 +572,31 @@ function renderXp() {
   $("#xpFill").style.width = Math.round((xp - lo) / (hi - lo) * 100) + "%";
 }
 function renderMyTribes() {
-  const box = $("#myTribesBox"), ul = $("#myTribesList"), ids = stats?.current || [];
+  const box = $("#myTribesBox"), ul = $("#myTribesList"), ids = [...new Set([...(stats?.current || []), ...(tribes?.guestIds() || [])])];
   box.hidden = !user || !stats; if (box.hidden) return;
   ul.replaceChildren();
-  for (const id of ids) { const tr = tribes?.get(id); if (tr) ul.append(tribes.row(tr)); }
+  const mine = ids.map(id => tribes?.get(id)).filter(Boolean);
+  // up to two right here; more go behind one row that opens the list in its own window
+  if (mine.length > 2) {
+    const li = document.createElement("li"), b = document.createElement("button"); b.className = "mt-more";
+    const n = document.createElement("span"); n.className = "n"; n.textContent = num(mine.length) + " ›";
+    b.append(document.createTextNode(t("myTribesOpen")), n); b.onclick = () => openMyTribes(mine); li.append(b); ul.append(li);
+  } else for (const tr of mine) ul.append(tribes.row(tr));
   if (!ul.children.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = t("noMyTribes"); ul.append(li); }
 }
-// picking one of my tribes opens its sheet: the account sheet steps aside
+// picking one of my tribes opens its sheet: the account sheet (and the list window) step aside
 $("#myTribesList").addEventListener("click", e => { if (e.target.closest(".tribe-row")) closeAccount(); });
+const mtModal = $("#myTribesModal");
+const mtEsc = e => { if (e.key === "Escape") closeMyTribes(); };
+function closeMyTribes() { mtModal.hidden = true; document.removeEventListener("keydown", mtEsc); }
+function openMyTribes(list) {
+  $("#mtList").replaceChildren(...list.map(tr => tribes.row(tr)));
+  mtModal.hidden = false; document.addEventListener("keydown", mtEsc); $("#mtClose").focus();
+  track("my_tribes_open", { n: list.length });
+}
+$("#mtClose").onclick = closeMyTribes;
+mtModal.addEventListener("click", e => { if (e.target === mtModal) closeMyTribes(); });
+$("#mtList").addEventListener("click", e => { if (e.target.closest(".tribe-row")) { closeMyTribes(); closeAccount(); } });
 
 /* ---------- GDPR: download my data, delete my account ---------- */
 $("#exportBtn").onclick = async () => {
@@ -682,7 +700,7 @@ $("#signOutBtn").onclick = () => { backend?.signOut(); track("logout"); };
 tribes = initTribes({
   map, maplibregl, t, num, track, colorOf, locale, asyncCombo, searchAreas, searchDistricts,
   lang: () => lang, selected: () => selected, inScope: (lng, lat) => !area || area.test(lng, lat),
-  user: () => user, myPin: () => myPin, backend: () => backend, flash: flashHint,
+  user: () => user, myPin: () => myPin, backend: () => backend, flash: flashHint, onMembership: () => renderMyTribes(),
   openPinSheet: () => { openSheet(); $("#teamInput").focus(); },
   openAuth: () => { $("#acctLogin").hidden = false; if (phone.matches) openAccount(); },
   setSheetOpen: open => document.body.classList.toggle("sheet-open", open || !sheet.hidden),

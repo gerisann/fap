@@ -2,6 +2,11 @@
    Steps come from main.js: { el: () => selector, text: i18n key, before?: () => void }.
    A step whose element is not on screen (hidden, zero size) is skipped. */
 
+// safe-area inset in px (status bar / home indicator when installed): custom properties keep env() unresolved, a probe does not
+const inset = side => {
+  const p = document.createElement("div"); p.style.cssText = `position:fixed;visibility:hidden;padding-${side}:env(safe-area-inset-${side},0px)`;
+  document.body.append(p); const v = parseFloat(getComputedStyle(p).getPropertyValue("padding-" + side)) || 0; p.remove(); return v;
+};
 const visible = el => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
 
 export function runTour(steps, { t, track }) {
@@ -12,14 +17,16 @@ export function runTour(steps, { t, track }) {
   const hole = root.querySelector(".tour-hole"), tip = root.querySelector(".tour-tip");
   const next = root.querySelector(".tour-next"), skip = root.querySelector(".tour-skip");
   let i = -1, target = null, timer = 0;
+  const safe = { top: inset("top"), bottom: inset("bottom") };
 
   function place() {
     if (!target) return;
     const r = target.getBoundingClientRect(), pad = 6, vw = innerWidth, vh = innerHeight;
     Object.assign(hole.style, { left: r.left - pad + "px", top: r.top - pad + "px", width: r.width + 2 * pad + "px", height: r.height + 2 * pad + "px" });
     const w = Math.min(320, vw - 32), h = tip.offsetHeight, gap = 14;
+    const lo = 16 + safe.top, hi = vh - 16 - safe.bottom; // clear of the status bar / home indicator
     // below the spot if it fits, else above, else over the spot's lower part; always on screen
-    const top = r.bottom + gap + h <= vh - 16 ? r.bottom + gap : r.top - gap - h >= 16 ? r.top - gap - h : Math.max(16, vh - h - 16);
+    const top = r.bottom + gap + h <= hi ? r.bottom + gap : r.top - gap - h >= lo ? r.top - gap - h : Math.max(lo, hi - h);
     const left = Math.min(Math.max(16, r.left + r.width / 2 - w / 2), vw - w - 16);
     Object.assign(tip.style, { width: w + "px", left: left + "px", top: top + "px" });
   }

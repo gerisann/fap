@@ -17,7 +17,10 @@ service cloud.firestore {
     function member(t, u) { return /databases/$(database)/documents/tribes/$(t)/members/$(u); }
     function post(t, p) { return /databases/$(database)/documents/tribes/$(t)/posts/$(p); }
     function reportDoc(t, p, u) { return /databases/$(database)/documents/tribes/$(t)/posts/$(p)/reports/$(u); }
-    function isMember(t) { return exists(member(t, me())); }
+    // a guest counts as a member until their end date
+    function isMember(t) { return exists(member(t, me())) && (get(member(t, me())).data.role != 'guest' || get(member(t, me())).data.until > request.time); }
+    // posts and replies carry guest: true exactly when the author is a guest
+    function guestFlagOk(t) { return ('guest' in request.resource.data) == (get(member(t, me())).data.role == 'guest') && (!('guest' in request.resource.data) || request.resource.data.guest == true); }
     function isCaptain(t) { return isMember(t) && get(member(t, me())).data.role in ['captain', 'cocaptain']; }
     // the founding captain, alone in the tribe: may clear its feed before leaving, which deletes the tribe
     function lastCaptain(t) { return isMember(t) && get(member(t, me())).data.role == 'captain' && get(tribe(t)).data.memberCount == 1; }
@@ -304,21 +307,28 @@ service cloud.firestore {
       match /members/{uid} {
         allow read: if true;
         allow create: if signedIn() && me() == uid
-          && request.resource.data.keys().hasOnly(['nick', 'role', 'joinedAt', 'ref'])
+          && request.resource.data.keys().hasOnly(['nick', 'role', 'joinedAt', 'ref', 'until'])
           && exists(userDoc(uid)) && ('rulesAt' in get(userDoc(uid)).data)
           && request.resource.data.nick == get(userDoc(uid)).data.nick
           && request.resource.data.joinedAt == request.time
           // who invited me (their uid from the invite link); never myself
           && (!('ref' in request.resource.data) || (request.resource.data.ref is string && request.resource.data.ref != uid))
-          // the membership ledger (3-team limit, XP) must be updated in the same batch
-          && getAfter(statsDoc(uid)).data.lastJoin == tid
+          // only a guest has (and must have) an end date
+          && ((request.resource.data.role == 'guest') == ('until' in request.resource.data))
           && (
-            // founding captain: the tribe doc is created in the same batch
-            (request.resource.data.role == 'captain' && !exists(tribe(tid)) && existsAfter(tribe(tid)))
-            // regular member: the tribe's count goes up by one in the same batch
-            // regular member: must be near the tribe; the tribe's count goes up by one in the same batch
-            || (request.resource.data.role == 'member' && exists(tribe(tid))
-              && nearMe(get(tribe(tid)).data.lat, get(tribe(tid)).data.lng)
+            // the membership ledger (3-team limit, XP) must be updated in the same batch
+            (getAfter(statsDoc(uid)).data.lastJoin == tid && (
+              // founding captain: the tribe doc is created in the same batch
+              (request.resource.data.role == 'captain' && !exists(tribe(tid)) && existsAfter(tribe(tid)))
+              // regular member: must be near the tribe; the tribe's count goes up by one in the same batch
+              || (request.resource.data.role == 'member' && exists(tribe(tid))
+                && nearMe(get(tribe(tid)).data.lat, get(tribe(tid)).data.lng)
+                && getAfter(tribe(tid)).data.memberCount == get(tribe(tid)).data.memberCount + 1)
+            ))
+            // guest: from anywhere, for at most 3 days (72 h + 1 h clock skew); no ledger, no XP, no team slot
+            || (request.resource.data.role == 'guest' && exists(tribe(tid)) && !('ref' in request.resource.data)
+              && request.resource.data.until is timestamp && request.resource.data.until > request.time
+              && request.resource.data.until <= request.time + duration.value(73, 'h')
               && getAfter(tribe(tid)).data.memberCount == get(tribe(tid)).data.memberCount + 1)
           );
         // rate limit: at most one post / reply every 20 s; or follow my renamed username
@@ -342,7 +352,7 @@ service cloud.firestore {
       match /posts/{pid} {
         allow read: if true;
         allow create: if signedIn() && isMember(tid) && stampedNow(tid) && nameOk(get(member(tid, me())).data.nick)
-          && request.resource.data.keys().hasOnly(['authorUid', 'nick', 'type', 'text', 'createdAt', 'replyCount', 'reportCount', 'hidden'])
+          && request.resource.data.keys().hasOnly(['authorUid', 'nick', 'type', 'text', 'createdAt', 'replyCount', 'reportCount', 'hidden', 'guest']) && guestFlagOk(tid)
           && request.resource.data.authorUid == me()
           && request.resource.data.nick == get(member(tid, me())).data.nick
           && request.resource.data.type == 'text'
@@ -373,7 +383,7 @@ service cloud.firestore {
         match /replies/{rid} {
           allow read: if true;
           allow create: if signedIn() && isMember(tid) && stampedNow(tid) && nameOk(get(member(tid, me())).data.nick)
-            && request.resource.data.keys().hasOnly(['authorUid', 'nick', 'text', 'createdAt', 'hidden'])
+            && request.resource.data.keys().hasOnly(['authorUid', 'nick', 'text', 'createdAt', 'hidden', 'guest']) && guestFlagOk(tid)
             && request.resource.data.authorUid == me()
             && request.resource.data.nick == get(member(tid, me())).data.nick
             && cleanText(request.resource.data.text, 500)

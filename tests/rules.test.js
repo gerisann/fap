@@ -2,7 +2,7 @@
 import { test, before, after, beforeEach } from "node:test";
 import { readFileSync } from "node:fs";
 import { initializeTestEnvironment, assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
-import { doc, setDoc, getDoc, getDocs, deleteDoc, writeBatch, serverTimestamp, increment, updateDoc, arrayUnion, arrayRemove, deleteField, FieldPath, query, where, collectionGroup } from "firebase/firestore";
+import { doc, setDoc, getDoc, getDocs, deleteDoc, writeBatch, serverTimestamp, increment, updateDoc, arrayUnion, arrayRemove, deleteField, FieldPath, query, where, collectionGroup, Timestamp } from "firebase/firestore";
 
 let env;
 before(async () => {
@@ -398,4 +398,35 @@ test("district tribes: next to the city tribe, keyed by the district's OSM id", 
   await assertSucceeds(createTribe("alice", "Ferencváros", XIII, undefined, tidOf("Ferencváros", XIII), { district: "XIII. kerület" }));
   const t = (await getDoc(doc(db("alice"), "tribes", tidOf("Ferencváros", XIII)))).data();
   if (t.district !== "XIII. kerület" || t.city !== "Budapest") throw new Error(JSON.stringify(t));
+});
+
+// guest: no ledger, an end date at most 3 days ahead, counted in memberCount
+function guestJoin(uid, tid, hours = 71.9, n = "Fan_" + uid) {
+  const d = db(uid), b = writeBatch(d);
+  b.set(doc(d, "tribes", tid, "members", uid), { nick: n, role: "guest", joinedAt: serverTimestamp(), until: Timestamp.fromMillis(Date.now() + hours * 3600e3) });
+  b.update(doc(d, "tribes", tid), { memberCount: increment(1), lastActivityAt: serverTimestamp() });
+  return b.commit();
+}
+function guestPost(uid, tid, pid, guest, n = "Fan_" + uid) {
+  const d = db(uid), b = writeBatch(d);
+  b.update(doc(d, "tribes", tid, "members", uid), { lastPostAt: serverTimestamp() });
+  b.set(doc(d, "tribes", tid, "posts", pid), { authorUid: uid, nick: n, type: "text", text: "Hello from London", createdAt: serverTimestamp(), replyCount: 0, reportCount: 0, hidden: false, ...(guest === undefined ? {} : { guest }) });
+  return b.commit();
+}
+
+test("guests: from far away, at most 3 days, tagged, no ledger", async () => {
+  const tid = await seedTribe();                                                  // Budapest
+  await nick("bob"); await pin("bob", "Arsenal", LON);                            // lives in London
+  await assertFails(guestJoin("bob", tid, 80));                                   // longer than 3 days
+  await assertFails(guestJoin("bob", tid, -1));                                   // already over
+  await assertSucceeds(guestJoin("bob", tid));
+  if ((await getDoc(doc(db("bob"), "tribes", tid))).data().memberCount !== 2) throw new Error("count");
+  if ((await stats("bob")).current.length) throw new Error("guest touched the ledger");
+  await assertFails(guestPost("bob", tid, "g1"));                                 // the guest tag is mandatory
+  await assertSucceeds(guestPost("bob", tid, "g2", true));
+  await assertFails(guestPost("alice", tid, "a1", true));                         // members are not guests
+  await env.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), "tribes", tid, "members", "bob"), { until: Timestamp.fromMillis(Date.now() - 1000), lastPostAt: Timestamp.fromMillis(0) }));
+  await assertFails(guestPost("bob", tid, "g3", true));                           // expired
+  await assertSucceeds(leave("bob", tid));
+  if ((await getDoc(doc(db("bob"), "tribes", tid))).data().memberCount !== 1) throw new Error("count after leave");
 });

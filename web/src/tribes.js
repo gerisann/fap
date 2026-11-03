@@ -121,10 +121,32 @@ export function initTribes(ctx) {
   const status = (msg, err) => { const s = $("#tsStatus"); s.textContent = msg || ""; s.classList.toggle("err", !!err); };
   function showSheet() { sheet.hidden = false; ctx.setSheetOpen(true); }
   function closeSheet() {
-    sheet.hidden = true; ctx.setSheetOpen(false); stopWatching(); open = null;
+    sheet.hidden = true; sheet.classList.remove("full"); ctx.setSheetOpen(false); stopWatching(); open = null;
     if (location.pathname.startsWith("/t/")) history.replaceState(null, "", "/" + location.search);
   }
   $("#tsClose").onclick = () => { closeSheet(); track("tribe_close"); };
+
+  // phones: drag (or flick) the sheet up to full screen; down goes back to normal, then closes. While the feed is
+  // scrolled, only the header starts a drag, so scrolling stays scrolling.
+  const phone = matchMedia("(max-width:720px)");
+  let drag = null;
+  sheet.addEventListener("touchstart", e => {
+    if (!phone.matches || e.target.closest("input, textarea")) return;
+    if (sheet.scrollTop > 0 && !e.target.closest(".tribe-head")) return;
+    drag = { y: e.touches[0].clientY, t: performance.now(), dy: 0 };
+  }, { passive: true });
+  sheet.addEventListener("touchmove", e => {
+    if (!drag) return;
+    drag.dy = e.touches[0].clientY - drag.y;
+    sheet.style.transform = drag.dy > 0 ? `translateY(${drag.dy}px)` : ""; // follow the finger down only
+  }, { passive: true });
+  sheet.addEventListener("touchend", () => {
+    if (!drag) return;
+    const { dy, t } = drag, v = dy / Math.max(1, performance.now() - t); drag = null; sheet.style.transform = "";
+    const full = sheet.classList.contains("full");
+    if (dy < -40 || v < -0.5) { if (!full) { sheet.classList.add("full"); track("tribe_sheet_full"); } }
+    else if (dy > 70 || v > 0.6) { if (full) sheet.classList.remove("full"); else { closeSheet(); track("tribe_close", { method: "swipe" }); } }
+  });
   function stopWatching() {
     unsubPosts?.(); unsubPosts = null; unsubMember?.(); unsubMember = null;
     for (const u of replyWatch.values()) u(); replyWatch.clear();
@@ -156,10 +178,11 @@ export function initTribes(ctx) {
     li.append(when, teams, lg);
     return li;
   }
-  function gate(textKey, btnKey, action, vars) {
+  function gate(textKey, btnKey, action, vars, btn2Key, action2) {
     const g = $("#tsGate"); g.hidden = !textKey; if (!textKey) return;
-    $("#tsGateText").textContent = t(textKey, vars); const b = $("#tsGateBtn"); b.hidden = !btnKey;
+    $("#tsGateText").textContent = t(textKey, vars); const b = $("#tsGateBtn"), b2 = $("#tsGateBtn2"); b.hidden = !btnKey; b2.hidden = !btn2Key;
     if (btnKey) { b.textContent = t(btnKey); b.onclick = action; }
+    if (btn2Key) { b2.textContent = t(btn2Key); b2.onclick = action2; }
     track("tribe_gate", { level: textKey });
   }
 
@@ -183,10 +206,13 @@ export function initTribes(ctx) {
   }
   function paintMembership() {
     if (!open) return;
-    const isMember = !!member;
+    const guest = member?.role === "guest", expired = guest && tsMs(member.until) <= Date.now();
+    if (expired) dropGuest(open);
+    const isMember = !!member && !expired;
     $("#tsJoin").hidden = isMember; $("#tsLeave").hidden = !isMember;
     $("#tsComposer").hidden = !isMember;
-    head(open.team, subOf(open) + (member?.role === "captain" ? " · " + t("captain") : ""), titleOf(open), open.name ? open.team : null);
+    const role = member?.role === "captain" ? " · " + t("captain") : guest && !expired ? " · " + t("guestUntil", { when: new Intl.DateTimeFormat(ctx.locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" }).format(tsMs(member.until)) }) : "";
+    head(open.team, subOf(open) + role, titleOf(open), open.name ? open.team : null);
     relabel($("#tsShare"), ctx.user() ? "inviteLinkXp" : "inviteLink");
   }
   function relabel(el, key) { el.dataset.i18n = key; el.textContent = t(key); }
@@ -228,13 +254,35 @@ export function initTribes(ctx) {
     }, () => { status(t("geoFailed"), true); track("checkin_error"); }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
   }
 
+  // guest memberships live 3 days; the browser remembers them for "My tribes" and drops them once over
+  const GUESTS = "tm.guests";
+  const readGuests = () => { try { return JSON.parse(localStorage.getItem(GUESTS) || "{}"); } catch (_) { return {}; } };
+  const writeGuests = g => { try { localStorage.setItem(GUESTS, JSON.stringify(g)); } catch (_) {} };
+  const guestIds = () => Object.entries(readGuests()).filter(([, until]) => until > Date.now()).map(([id]) => id);
+  const dropping = new Set();
+  async function dropGuest(tr) {
+    if (dropping.has(tr.id)) return; dropping.add(tr.id);
+    const g = readGuests(); delete g[tr.id]; writeGuests(g);
+    try { await ctx.backend()?.leaveTribe(tr.id, tr.team); } catch (_) {}
+    dropping.delete(tr.id); ctx.onMembership?.();
+  }
+  async function joinGuest() {
+    if (!open || !ctx.user() || !profileLoaded) return;
+    if (needProfile(joinGuest)) return;
+    try {
+      if (member) await ctx.backend().leaveTribe(open.id, open.team); // an expired guest doc first
+      const until = await ctx.backend().joinAsGuest(open.id, profile.nick);
+      writeGuests({ ...readGuests(), [open.id]: until }); gate(null); status(t("joinedGuest"));
+      track("tribe_join", { team: open.team, method: "guest" }); ctx.onMembership?.();
+    } catch (e) { status(t("saveFailed"), true); track("tribe_join_error", { code: e.code || "unknown", method: "guest" }); }
+  }
   async function join() {
     if (!open) return;
     if (!ctx.user()) { gate("gateSignIn", "signIn", () => { closeSheet(); ctx.openAuth(); }); return; }
     if (!profileLoaded) return;
     if (needProfile(join)) return;
     const why = nearReason(open);
-    if (!why) { gate("gateNear", "imHere", () => checkInHere(() => { gate(null); join(); }), { city: placeOf(open) }); return; }
+    if (!why) { gate("gateNear", "imHere", () => checkInHere(() => { gate(null); join(); }), { city: placeOf(open) }, "joinGuest", joinGuest); return; }
     if (!(await teamSlotOk(open.team))) { gate("teamLimit"); return; }
     try {
       const r = await ctx.backend().joinTribe(open.id, open.team, profile.nick, refFor(open.id));
@@ -330,7 +378,9 @@ export function initTribes(ctx) {
     const hiddenForAll = item.hidden || (kind === "post" && item.reportCount >= 3);
     const meta = document.createElement("div"); meta.className = "meta";
     const nb = document.createElement("b"); nb.textContent = item.nick; nameLabel(nb, item);
-    meta.append(nb, document.createTextNode(" · " + ago(tsMs(item.createdAt))));
+    meta.append(nb);
+    if (item.guest) { const g = document.createElement("span"); g.className = "team-tag guest-tag"; g.textContent = t("guestTag"); meta.append(" ", g); }
+    meta.append(document.createTextNode(" · " + ago(tsMs(item.createdAt))));
     const body = document.createElement("p");
     if (hiddenForAll && !isCaptain() && item.authorUid !== me) { body.className = "muted"; body.textContent = t("hiddenPost"); wrap.append(meta, body); return wrap; }
     body.textContent = item.text; if (hiddenForAll) body.classList.add("dim");
@@ -374,13 +424,13 @@ export function initTribes(ctx) {
   $("#tsComposer").onsubmit = async e => {
     e.preventDefault(); const ta = $("#postText"), text = ta.value.trim(); if (!text || !open || !member) return;
     if (isProfane(text)) { status(t("profane"), true); track("post_blocked"); return; }
-    try { await ctx.backend().createPost(open.id, member.nick, text); ta.value = ""; status(""); track("post_create", { team: open.team }); }
+    try { await ctx.backend().createPost(open.id, member.nick, text, member.role === "guest"); ta.value = ""; status(""); track("post_create", { team: open.team }); }
     catch (err) { status(t(tooFast(err) ? "postTooFast" : "saveFailed"), true); track("post_error", { code: err.code || "unknown" }); }
   };
   async function sendReply(p, input) {
     const text = input.value.trim(); if (!text || !member) return;
     if (isProfane(text)) { status(t("profane"), true); track("post_blocked"); return; }
-    try { await ctx.backend().createReply(open.id, p.id, member.nick, text); input.value = ""; track("reply_create", { team: open.team }); }
+    try { await ctx.backend().createReply(open.id, p.id, member.nick, text, member.role === "guest"); input.value = ""; track("reply_create", { team: open.team }); }
     catch (err) { if (import.meta.env.DEV) console.warn("reply", err); status(t(tooFast(err) ? "postTooFast" : "saveFailed"), true); }
   }
   /* names hidden by 3 reports show as "Fan#ABCD" (stable per author); looked up once per name and cached */
@@ -412,6 +462,6 @@ export function initTribes(ctx) {
 
   return {
     setBackend, onUser, render, setVisible, isOpen: () => !sheet.hidden, close: closeSheet, setProfile: p => { profile = p; },
-    get: id => tribes.find(x => x.id === id), open: id => openTribe(id, "account"), row: tr => tribeRow(tr, "account"),
+    get: id => tribes.find(x => x.id === id), guestIds, open: id => openTribe(id, "account"), row: tr => tribeRow(tr, "account"),
   };
 }
