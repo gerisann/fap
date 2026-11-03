@@ -7,7 +7,7 @@ import {
 } from "firebase/auth";
 import {
   getFirestore, connectFirestoreEmulator, collection, doc, onSnapshot, setDoc, getDoc, deleteDoc, updateDoc, serverTimestamp,
-  writeBatch, increment, query, orderBy, limit,
+  writeBatch, increment, query, orderBy, limit, arrayUnion, arrayRemove, deleteField, FieldPath,
 } from "firebase/firestore";
 
 const app = initializeApp({
@@ -116,22 +116,52 @@ export const tribeId = (team, cityOsm) => cityOsm + "_" + team.toLowerCase().rep
 export const watchTribes = (onTribes, onError) => onSnapshot(collection(db, "tribes"), s => onTribes(s.docs.map(snapData)), onError);
 export const watchMember = (tid, cb) => onSnapshot(doc(db, "tribes", tid, "members", uid()), s => cb(s.exists() ? s.data() : null), () => cb(null));
 
+/* ---------- XP + membership ledger (stats/{uid}); see firestore.rules for what each write may do ---------- */
+const statsRef = u => doc(db, "stats", u);
+const readStats = async () => { const s = await getDoc(statsRef(uid())); return s.exists() ? s.data() : null; };
+export const watchStats = cb => onSnapshot(statsRef(uid()), s => cb(s.exists() ? s.data({ serverTimestamps: "estimate" }) : null), () => cb(null));
+const utcDay = ms => Math.floor(ms / 86400000);
+// +10 XP once per UTC day; creates the ledger on the very first visit. Returns true when XP was granted.
+export async function claimDaily() {
+  const s = await readStats();
+  if (!s) { await setDoc(statsRef(uid()), { xp: 10, lastDailyAt: serverTimestamp(), refs: 0, teams: {}, joined: [], current: [] }); return true; }
+  if (utcDay(s.lastDailyAt?.toMillis?.() || 0) >= utcDay(Date.now())) return false;
+  await updateDoc(statsRef(uid()), { xp: increment(10), lastDailyAt: serverTimestamp() });
+  return true;
+}
+async function ledgerJoin(b, tid, team) {
+  const s = await readStats(), first = !s.joined.includes(tid);
+  b.update(statsRef(uid()), new FieldPath("teams", team), increment(1), "current", arrayUnion(tid), "joined", arrayUnion(tid), "xp", increment(first ? 50 : 0), "lastJoin", tid);
+  return first;
+}
+
 export async function createTribe(t, nick) {
   const tid = tribeId(t.team, t.cityOsm), b = writeBatch(db);
-  b.set(doc(db, "tribes", tid), { team: t.team, city: t.city, cityOsm: t.cityOsm, country: t.country || "", lat: t.lat, lng: t.lng, memberCount: 1, createdAt: serverTimestamp(), lastActivityAt: serverTimestamp() });
+  b.set(doc(db, "tribes", tid), { team: t.team, ...(t.name ? { name: t.name } : {}), city: t.city, cityOsm: t.cityOsm, country: t.country || "", lat: t.lat, lng: t.lng, memberCount: 1, createdAt: serverTimestamp(), lastActivityAt: serverTimestamp() });
   b.set(doc(db, "tribes", tid, "members", uid()), { nick, role: "captain", joinedAt: serverTimestamp() });
+  await ledgerJoin(b, tid, t.team);
   await b.commit(); return tid;
 }
-export function joinTribe(tid, nick) {
-  const b = writeBatch(db);
-  b.set(doc(db, "tribes", tid, "members", uid()), { nick, role: "member", joinedAt: serverTimestamp() });
+// ref: the inviter's uid from the invite link. They get +100 XP the first time I join this tribe.
+export async function joinTribe(tid, team, nick, ref) {
+  const me = uid(), b = writeBatch(db);
+  const okRef = ref && ref !== me && (await getDoc(statsRef(ref))).exists() ? ref : null;
+  b.set(doc(db, "tribes", tid, "members", me), { nick, role: "member", joinedAt: serverTimestamp(), ...(okRef ? { ref: okRef } : {}) });
   b.update(doc(db, "tribes", tid), { memberCount: increment(1), lastActivityAt: serverTimestamp() });
-  return b.commit();
+  const first = await ledgerJoin(b, tid, team);
+  if (okRef && first) b.update(statsRef(okRef), { xp: increment(100), refs: increment(1) });
+  await b.commit();
+  return { first, referred: !!(okRef && first) };
 }
-export function leaveTribe(tid) {
-  const b = writeBatch(db);
+export async function leaveTribe(tid, team) {
+  const b = writeBatch(db), s = await readStats();
   b.delete(doc(db, "tribes", tid, "members", uid()));
   b.update(doc(db, "tribes", tid), { memberCount: increment(-1) });
+  if (s) {
+    const args = ["current", arrayRemove(tid), "lastLeave", tid], n = s.teams?.[team] || 0;
+    if (s.current.includes(tid) && n >= 1) args.push(new FieldPath("teams", team), n === 1 ? deleteField() : increment(-1));
+    b.update(statsRef(uid()), ...args);
+  }
   return b.commit();
 }
 

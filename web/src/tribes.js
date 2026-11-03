@@ -27,11 +27,27 @@ export function initTribes(ctx) {
 
   const m = location.pathname.match(/^\/t\/([^/]+)/);
   if (m) pendingOpen = decodeURIComponent(m[1]);
+  // personal invite link: /t/<tid>?ref=<inviter uid>. Remember it for this tribe, then drop it from the URL.
+  const REF = "tm.ref";
+  const params = new URLSearchParams(location.search);
+  if (m && params.get("ref")) {
+    try { sessionStorage.setItem(REF, JSON.stringify({ tid: pendingOpen, ref: params.get("ref") })); } catch (_) {}
+    params.delete("ref"); history.replaceState(null, "", location.pathname + (params.size ? "?" + params : ""));
+    track("invite_open");
+  }
+  const refFor = tid => { try { const r = JSON.parse(sessionStorage.getItem(REF) || "null"); return r?.tid === tid ? r.ref : null; } catch (_) { return null; } };
+
+  /* labels: custom name (or the team), the team as a tag, members + founding month */
+  const titleOf = tr => tr.name || tr.team;
+  const membersText = n => t(n === 1 ? "membersOne" : "membersOther", { n: num(n) });
+  const foundedText = tr => { const ms = tr.createdAt?.toMillis?.(); return ms ? t("founded", { date: new Intl.DateTimeFormat(ctx.locale(), { year: "numeric", month: "short" }).format(ms) }) : ""; };
+  const subOf = tr => [tr.city, membersText(tr.memberCount), foundedText(tr)].filter(Boolean).join(" · ");
+  function teamTag(team) { const s = document.createElement("span"); s.className = "team-tag"; s.textContent = team; return s; }
 
   /* ---------- data ---------- */
   function setBackend(fb) {
     fb.watchTribes(list => {
-      tribes = list; render();
+      tribes = list; render(); ctx.onTribes?.();
       if (open) { const fresh = list.find(x => x.id === open.id); if (fresh) { open = fresh; paintMembership(); } }
       if (pendingOpen) { const id = pendingOpen; pendingOpen = null; openTribe(id, "link"); } },
       e => track("store_error", { code: e.code || "unknown", source: "tribes" }));
@@ -62,23 +78,33 @@ export function initTribes(ctx) {
       const byCity = new Map(); for (const tr of list) { const k = tr.cityOsm; byCity.set(k, [...(byCity.get(k) || []), tr]); }
       for (const group of byCity.values()) group.forEach((tr, i) => {
         const n = group.length, a = i / n * 2 * Math.PI - Math.PI / 2, r = n > 1 ? 26 + n * 3 : 0;
-        const el = document.createElement("button"); el.className = "tribe-mk"; el.title = tr.team + " · " + tr.city;
+        const el = document.createElement("button"); el.className = "tribe-mk"; el.title = titleOf(tr) + " · " + tr.city;
         const d = document.createElement("span"); d.className = "dot"; d.style.background = ctx.colorOf(tr.team);
-        const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = tr.team;
-        const c = document.createElement("b"); c.textContent = num(tr.memberCount);
-        el.append(d, nm, c); el.onclick = ev => { ev.stopPropagation(); openTribe(tr.id, "map"); };
+        const txt = document.createElement("span"); txt.className = "tm-text";
+        const top = document.createElement("span"); top.className = "tm-top";
+        const nm = document.createElement("b"); nm.className = "nm"; nm.textContent = titleOf(tr); top.append(nm);
+        if (tr.name) top.append(teamTag(tr.team));
+        const meta = document.createElement("span"); meta.className = "tm-meta"; meta.textContent = [membersText(tr.memberCount), foundedText(tr)].filter(Boolean).join(" · ");
+        txt.append(top, meta); el.append(d, txt); el.onclick = ev => { ev.stopPropagation(); openTribe(tr.id, "map"); };
         markers.set(tr.id, new maplibregl.Marker({ element: el, offset: [Math.cos(a) * r, Math.sin(a) * r], opacityWhenCovered: "0" }).setLngLat([tr.lng, tr.lat]).addTo(map));
       });
     }
     const ul = $("#tribeList"); ul.replaceChildren();
     for (const tr of list.slice(0, 30)) {
-      const li = document.createElement("li"), b = document.createElement("button");
-      const d = document.createElement("span"); d.className = "dot"; d.style.background = ctx.colorOf(tr.team);
-      const nm = document.createElement("span"); nm.textContent = tr.team + " · " + tr.city;
-      const c = document.createElement("span"); c.className = "n"; c.textContent = num(tr.memberCount);
-      b.append(d, nm, c); b.onclick = () => openTribe(tr.id, "list"); li.append(b); ul.append(li);
+      ul.append(tribeRow(tr, "list"));
     }
     if (!list.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = t("noTribes"); ul.append(li); }
+  }
+  // a two-line row (name + team tag / city · members · founded), used in the board list and in "My tribes"
+  function tribeRow(tr, source) {
+    const li = document.createElement("li"), b = document.createElement("button"); b.className = "tribe-row";
+    const d = document.createElement("span"); d.className = "dot"; d.style.background = ctx.colorOf(tr.team);
+    const txt = document.createElement("span"); txt.className = "tr-text";
+    const top = document.createElement("span"); top.className = "tm-top";
+    const nm = document.createElement("b"); nm.textContent = titleOf(tr); top.append(nm); if (tr.name) top.append(teamTag(tr.team));
+    const sub = document.createElement("span"); sub.className = "tr-sub"; sub.textContent = subOf(tr);
+    txt.append(top, sub); b.append(d, txt); b.onclick = () => openTribe(tr.id, source); li.append(b);
+    return li;
   }
   function setVisible(v) { visible = v; $("#tribesBox").hidden = !v; render(); }
 
@@ -94,8 +120,9 @@ export function initTribes(ctx) {
     unsubPosts?.(); unsubPosts = null; unsubMember?.(); unsubMember = null;
     for (const u of replyWatch.values()) u(); replyWatch.clear();
   }
-  function head(team, sub) {
-    $("#tsDot").style.background = ctx.colorOf(team); $("#tsTitle").textContent = team; $("#tsSub").textContent = sub;
+  function head(team, sub, title = team, tag = null) {
+    $("#tsDot").style.background = ctx.colorOf(team); $("#tsTitle").textContent = title; $("#tsSub").textContent = sub;
+    const slot = $("#tsTag"); slot.replaceChildren(); if (tag) slot.append(teamTag(tag));
   }
   function gate(textKey, btnKey, action, vars) {
     const g = $("#tsGate"); g.hidden = !textKey; if (!textKey) return;
@@ -110,7 +137,7 @@ export function initTribes(ctx) {
     if (!open || open.id !== id) { stopWatching(); feed.replaceChildren(); status(""); }
     open = tr;
     $("#tsCreate").hidden = true; $("#tsActions").hidden = false; $("#tsNick").hidden = true; gate(null);
-    head(tr.team, t("tribeSub", { city: tr.city, n: num(tr.memberCount) }));
+    head(tr.team, subOf(tr), titleOf(tr), tr.name ? tr.team : null);
     showSheet();
     history.replaceState(null, "", "/t/" + encodeURIComponent(id) + location.search);
     map.flyTo({ center: [tr.lng, tr.lat], zoom: Math.max(map.getZoom(), 9), duration: 900 });
@@ -125,7 +152,17 @@ export function initTribes(ctx) {
     const isMember = !!member;
     $("#tsJoin").hidden = isMember; $("#tsLeave").hidden = !isMember || member.role === "captain";
     $("#tsComposer").hidden = !isMember;
-    head(open.team, t("tribeSub", { city: open.city, n: num(open.memberCount) }) + (member?.role === "captain" ? " · " + t("captain") : ""));
+    head(open.team, subOf(open) + (member?.role === "captain" ? " · " + t("captain") : ""), titleOf(open), open.name ? open.team : null);
+    relabel($("#tsShare"), ctx.user() ? "inviteLinkXp" : "inviteLink");
+  }
+  function relabel(el, key) { el.dataset.i18n = key; el.textContent = t(key); }
+
+  // 3-team limit, mirrored from the stats ledger rule
+  async function teamSlotOk(team) {
+    let st = ctx.stats();
+    if (!st) { await ctx.backend().claimDaily(); st = ctx.stats() || { teams: {} }; }
+    const teams = st.teams || {};
+    return team in teams || Object.keys(teams).length < 3;
   }
 
   /* username + community rules, asked once before the first join / create (the name may already exist from the account block) */
@@ -163,18 +200,25 @@ export function initTribes(ctx) {
     if (needProfile(join)) return;
     const why = nearReason(open);
     if (!why) { gate("gateNear", "imHere", () => checkInHere(() => { gate(null); join(); }), { city: open.city }); return; }
-    try { await ctx.backend().joinTribe(open.id, profile.nick); gate(null); status(t("joined")); track("tribe_join", { team: open.team, method: why }); }
-    catch (e) { status(t(e.code === "permission-denied" ? "gateNearShort" : "saveFailed"), true); track("tribe_join_error", { code: e.code || "unknown" }); }
+    if (!(await teamSlotOk(open.team))) { gate("teamLimit"); return; }
+    try {
+      const r = await ctx.backend().joinTribe(open.id, open.team, profile.nick, refFor(open.id));
+      gate(null); status(t("joined") + (r.first ? " +50 XP" : ""));
+      track("tribe_join", { team: open.team, method: why, source: r.referred ? "invite" : "direct" });
+    } catch (e) { status(t(e.code === "permission-denied" ? "joinDenied" : "saveFailed"), true); track("tribe_join_error", { code: e.code || "unknown" }); }
   }
   $("#tsJoin").onclick = join;
   $("#tsLeave").onclick = async () => {
     if (!open || !confirm(t("leaveConfirm"))) return;
-    try { await ctx.backend().leaveTribe(open.id); status(t("left")); track("tribe_leave", { team: open.team }); } catch (_) { status(t("saveFailed"), true); }
+    try { await ctx.backend().leaveTribe(open.id, open.team); status(t("left")); track("tribe_leave", { team: open.team }); } catch (_) { status(t("saveFailed"), true); }
   };
+  // signed in: the link carries my uid, so I get +100 XP when someone joins through it for the first time
   $("#tsShare").onclick = async () => {
     if (!open) return;
-    const url = location.origin + "/t/" + encodeURIComponent(open.id), title = open.team + " · " + open.city + " – TribeMap";
-    try { if (navigator.share) await navigator.share({ title, url }); else { await navigator.clipboard.writeText(url); status(t("linkCopied")); } track("tribe_share", { team: open.team }); }
+    const me = ctx.backend()?.currentUid();
+    const url = location.origin + "/t/" + encodeURIComponent(open.id) + (me ? "?ref=" + encodeURIComponent(me) : "");
+    const title = titleOf(open) + " · " + open.city + " – TribeMap";
+    try { if (navigator.share) await navigator.share({ title, url }); else { await navigator.clipboard.writeText(url); status(t("linkCopied")); } track("tribe_share", { team: open.team, on: !!me }); }
     catch (_) {}
   };
 
@@ -193,19 +237,23 @@ export function initTribes(ctx) {
     showSheet();
     if (!ctx.user()) { $("#tsCreate").hidden = true; gate("gateSignIn", "signIn", () => { closeSheet(); ctx.openAuth(); }); return; }
     if (!pin) { $("#tsCreate").hidden = true; gate("gatePin", "cta", () => { closeSheet(); ctx.openPinSheet(); }); return; }
-    $("#tsCreate").hidden = false; $("#tcTeam").textContent = pin.t; cityCombo.clear(); pickedCity = null; $("#tcSave").disabled = true;
+    $("#tsCreate").hidden = false; $("#tcTeam").textContent = pin.t; cityCombo.clear(); pickedCity = null; $("#tcSave").disabled = true; $("#tcName").value = "";
     track("tribe_create_start");
   }
   $("#newTribeBtn").onclick = startCreate;
   $("#tcSave").onclick = async function create() {
     const pin = ctx.myPin(); if (!pin || !pickedCity?.osm) return;
+    const name = $("#tcName").value.trim().replace(/\s+/g, " ");
+    if (name && (name.length < 3 || name.length > 40)) { status(t("tribeNameInvalid"), true); return; }
+    if (name && isProfane(name)) { status(t("profane"), true); track("tribe_name_blocked"); return; }
     if (needProfile(create)) return;
     const fb = ctx.backend(), tid = fb.tribeId(pin.t, pickedCity.osm);
     if (tribes.some(x => x.id === tid)) { openTribe(tid, "exists"); return; }
-    const tr = { team: pin.t, city: pickedCity.name, cityOsm: pickedCity.osm, country: (pickedCity.sub || "").split(", ").pop() || "", lat: +pickedCity.lat.toFixed(4), lng: +pickedCity.lng.toFixed(4) };
+    const tr = { team: pin.t, name: name || null, city: pickedCity.name, cityOsm: pickedCity.osm, country: (pickedCity.sub || "").split(", ").pop() || "", lat: +pickedCity.lat.toFixed(4), lng: +pickedCity.lng.toFixed(4) };
     if (!nearReason(tr)) { gate("gateNear", "imHere", () => checkInHere(() => { gate(null); create(); }), { city: tr.city }); return; }
+    if (!(await teamSlotOk(tr.team))) { gate("teamLimit"); return; }
     $("#tcSave").disabled = true;
-    try { await fb.createTribe(tr, profile.nick); track("tribe_create", { team: tr.team }); pendingOpen = tid; status(t("created")); }
+    try { await fb.createTribe(tr, profile.nick); track("tribe_create", { team: tr.team, custom: !!name }); pendingOpen = tid; status(t("created") + " +50 XP"); }
     catch (e) { $("#tcSave").disabled = false; status(t(e.code === "permission-denied" ? "gateNearShort" : "saveFailed"), true); track("tribe_create_error", { code: e.code || "unknown" }); }
   };
 
@@ -288,5 +336,8 @@ export function initTribes(ctx) {
     catch (_) { status(t("saveFailed"), true); }
   }
 
-  return { setBackend, onUser, render, setVisible, isOpen: () => !sheet.hidden, close: closeSheet, setProfile: p => { profile = p; } };
+  return {
+    setBackend, onUser, render, setVisible, isOpen: () => !sheet.hidden, close: closeSheet, setProfile: p => { profile = p; },
+    get: id => tribes.find(x => x.id === id), open: id => openTribe(id, "account"), row: tr => tribeRow(tr, "account"),
+  };
 }

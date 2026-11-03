@@ -2,7 +2,7 @@
 import { test, before, after, beforeEach } from "node:test";
 import { readFileSync } from "node:fs";
 import { initializeTestEnvironment, assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
-import { doc, setDoc, getDoc, deleteDoc, writeBatch, serverTimestamp, increment, updateDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, deleteDoc, writeBatch, serverTimestamp, increment, updateDoc, arrayUnion, arrayRemove, deleteField, FieldPath } from "firebase/firestore";
 
 let env;
 before(async () => {
@@ -21,30 +21,45 @@ const LON = { lat: 51.5072, lng: -0.1276 };
 const tidOf = (team, c = BUD) => c.cityOsm + "_" + slug(team);
 
 const pin = (uid, t, at = BUD) => setDoc(doc(db(uid), "pins", uid), { t, lat: at.lat, lng: at.lng, p: "area", ts: serverTimestamp() });
-function nick(uid, n = "Fan_" + uid, rules = true) { // claim the username + write the profile in one batch
+const daily = uid => setDoc(doc(db(uid), "stats", uid), { xp: 10, lastDailyAt: serverTimestamp(), refs: 0, teams: {}, joined: [], current: [] });
+async function nick(uid, n = "Fan_" + uid, rules = true) { // claim the username + write the profile in one batch
   const d = db(uid), b = writeBatch(d);
   b.set(doc(d, "usernames", n.toLowerCase()), { uid });
   b.set(doc(d, "users", uid), rules ? { nick: n, rulesAt: serverTimestamp() } : { nick: n });
-  return b.commit();
+  await b.commit();
+  if (!(await getDoc(doc(d, "stats", uid))).exists()) await daily(uid);
 }
 const here = (uid, at) => setDoc(doc(db(uid), "presence", uid), { lat: at.lat, lng: at.lng, ts: serverTimestamp() });
+const stats = async uid => (await getDoc(doc(db(uid), "stats", uid))).data();
 
-function createTribe(uid, team, c = BUD, n = "Fan_" + uid, tid = tidOf(team, c)) {
+// mirrors the client: the ledger update rides in the same batch as the member doc
+async function ledgerJoin(d, uid, b, tid, team) {
+  const s = await stats(uid), first = !s.joined.includes(tid);
+  b.update(doc(d, "stats", uid), new FieldPath("teams", team), increment(1), "current", arrayUnion(tid), "joined", arrayUnion(tid), "xp", increment(first ? 50 : 0), "lastJoin", tid);
+  return first;
+}
+async function createTribe(uid, team, c = BUD, n = "Fan_" + uid, tid = tidOf(team, c), extra = {}) {
   const d = db(uid), b = writeBatch(d);
-  b.set(doc(d, "tribes", tid), { team, city: c.city, cityOsm: c.cityOsm, country: c.country, lat: c.lat, lng: c.lng, memberCount: 1, createdAt: serverTimestamp(), lastActivityAt: serverTimestamp() });
+  b.set(doc(d, "tribes", tid), { team, city: c.city, cityOsm: c.cityOsm, country: c.country, lat: c.lat, lng: c.lng, memberCount: 1, createdAt: serverTimestamp(), lastActivityAt: serverTimestamp(), ...extra });
   b.set(doc(d, "tribes", tid, "members", uid), { nick: n, role: "captain", joinedAt: serverTimestamp() });
+  await ledgerJoin(d, uid, b, tid, team);
   return b.commit();
 }
-function join(uid, tid, n = "Fan_" + uid) {
-  const d = db(uid), b = writeBatch(d);
-  b.set(doc(d, "tribes", tid, "members", uid), { nick: n, role: "member", joinedAt: serverTimestamp() });
+async function join(uid, tid, n = "Fan_" + uid, ref = null) {
+  const d = db(uid), b = writeBatch(d), team = (await getDoc(doc(d, "tribes", tid))).data().team;
+  b.set(doc(d, "tribes", tid, "members", uid), { nick: n, role: "member", joinedAt: serverTimestamp(), ...(ref ? { ref } : {}) });
   b.update(doc(d, "tribes", tid), { memberCount: increment(1), lastActivityAt: serverTimestamp() });
+  const first = await ledgerJoin(d, uid, b, tid, team);
+  if (ref && first) b.update(doc(d, "stats", ref), { xp: increment(100), refs: increment(1) });
   return b.commit();
 }
-function leave(uid, tid) {
-  const d = db(uid), b = writeBatch(d);
+async function leave(uid, tid) {
+  const d = db(uid), b = writeBatch(d), team = (await getDoc(doc(d, "tribes", tid))).data().team, s = await stats(uid);
   b.delete(doc(d, "tribes", tid, "members", uid));
   b.update(doc(d, "tribes", tid), { memberCount: increment(-1) });
+  const args = ["current", arrayRemove(tid), "lastLeave", tid];
+  if (s.current.includes(tid) && (s.teams[team] || 0) >= 1) args.push(new FieldPath("teams", team), s.teams[team] === 1 ? deleteField() : increment(-1));
+  b.update(doc(d, "stats", uid), ...args);
   return b.commit();
 }
 function post(uid, tid, pid, text = "Ki jön meccset nézni?", n = "Fan_" + uid) {
@@ -66,11 +81,12 @@ function report(uid, tid, pid) {
   b.update(doc(d, "tribes", tid, "posts", pid), { reportCount: increment(1) });
   return b.commit();
 }
-async function seedTribe() { // alice founds Ferencváros · Budapest
-  await pin("alice", "Ferencváros"); await nick("alice");
-  await createTribe("alice", "Ferencváros");
+async function seedTribeBy(uid) { // uid founds Ferencváros · Budapest
+  await pin(uid, "Ferencváros"); await nick(uid);
+  await createTribe(uid, "Ferencváros");
   return tidOf("Ferencváros");
 }
+const seedTribe = () => seedTribeBy("alice");
 
 test("pins: verified owner only", async () => {
   await assertSucceeds(pin("alice", "Arsenal"));
@@ -105,6 +121,68 @@ test("profanity: pins and posts", async () => {
   const tid = tidOf("Ferencváros");
   await assertFails(post("alice", tid, "p1", "ez kurvára rossz"));
   await assertSucceeds(post("alice", tid, "p2", "Baszk csapat ellen játszunk, fagyi után!"));
+});
+
+test("xp: daily once, +50 only on first join, ledger cannot be skipped", async () => {
+  await nick("alice");                                       // creates stats with the first daily +10
+  if ((await stats("alice")).xp !== 10) throw new Error("daily create");
+  await assertFails(updateDoc(doc(db("alice"), "stats", "alice"), { xp: increment(10), lastDailyAt: serverTimestamp() })); // same day
+  await assertFails(updateDoc(doc(db("alice"), "stats", "alice"), { xp: 9999 }));
+  const tid = await seedTribeBy("bob");
+  await pin("alice", "Újpest");
+  await assertSucceeds(join("alice", tid));
+  if ((await stats("alice")).xp !== 60) throw new Error("join xp");
+  await assertSucceeds(leave("alice", tid));
+  await assertSucceeds(join("alice", tid));                  // rejoin: no XP
+  const s = await stats("alice");
+  if (s.xp !== 60 || s.current.length !== 1 || s.teams["Ferencváros"] !== 1) throw new Error("rejoin " + JSON.stringify(s));
+  // a member doc without the ledger update is refused
+  const d = db("carol"); await nick("carol"); await pin("carol", "Újpest");
+  const b = writeBatch(d);
+  b.set(doc(d, "tribes", tid, "members", "carol"), { nick: "Fan_carol", role: "member", joinedAt: serverTimestamp() });
+  b.update(doc(d, "tribes", tid), { memberCount: increment(1), lastActivityAt: serverTimestamp() });
+  await assertFails(b.commit());
+});
+
+test("at most 3 teams' tribes", async () => {
+  const teams = ["Arsenal", "Chelsea", "Liverpool", "Everton"];
+  for (const [i, team] of teams.entries()) { const u = "cap" + i; await pin(u, team); await nick(u); await createTribe(u, team); }
+  await nick("dave"); await pin("dave", "Újpest");
+  for (const team of teams.slice(0, 3)) await assertSucceeds(join("dave", tidOf(team)));
+  await assertFails(join("dave", tidOf("Everton")));          // 4th team
+  await assertSucceeds(leave("dave", tidOf("Chelsea")));
+  await assertSucceeds(join("dave", tidOf("Everton")));       // a slot freed up
+});
+
+test("referral: +100 to the inviter once, never self", async () => {
+  const tid = await seedTribeBy("alice");
+  await nick("bob"); await pin("bob", "Újpest");
+  await assertFails(join("bob", tid, "Fan_bob", "bob"));     // self-referral
+  await assertSucceeds(join("bob", tid, "Fan_bob", "alice"));
+  let a = await stats("alice"); if (a.xp !== 60 + 100 || a.refs !== 1) throw new Error("ref " + JSON.stringify(a));
+  // forging credit without a referred join is refused
+  await assertFails(updateDoc(doc(db("bob"), "stats", "alice"), { xp: increment(100), refs: increment(1) }));
+  await leave("bob", tid);
+  await assertSucceeds(join("bob", tid, "Fan_bob", "alice")); // rejoin: no second credit (helper skips it)
+  const d = db("bob"), b = writeBatch(d);                     // and a forced second credit fails
+  b.delete(doc(d, "tribes", tid, "members", "bob"));
+  b.update(doc(d, "tribes", tid), { memberCount: increment(-1) });
+  b.update(doc(d, "stats", "bob"), "current", arrayRemove(tid), "lastLeave", tid, new FieldPath("teams", "Ferencváros"), deleteField());
+  await b.commit();
+  const b2 = writeBatch(d);
+  b2.set(doc(d, "tribes", tid, "members", "bob"), { nick: "Fan_bob", role: "member", joinedAt: serverTimestamp(), ref: "alice" });
+  b2.update(doc(d, "tribes", tid), { memberCount: increment(1), lastActivityAt: serverTimestamp() });
+  b2.update(doc(d, "stats", "bob"), new FieldPath("teams", "Ferencváros"), increment(1), "current", arrayUnion(tid), "lastJoin", tid);
+  b2.update(doc(d, "stats", "alice"), { xp: increment(100), refs: increment(1) });
+  await assertFails(b2.commit());
+  a = await stats("alice"); if (a.refs !== 1) throw new Error("double credit");
+});
+
+test("tribe name: optional, clean, 3+ chars", async () => {
+  await pin("alice", "Arsenal"); await nick("alice");
+  await assertFails(createTribe("alice", "Arsenal", BUD, "Fan_alice", tidOf("Arsenal"), { name: "Kurva jó" }));
+  await assertFails(createTribe("alice", "Arsenal", BUD, "Fan_alice", tidOf("Arsenal"), { name: "ab" }));
+  await assertSucceeds(createTribe("alice", "Arsenal", BUD, "Fan_alice", tidOf("Arsenal"), { name: "Budapesti Ágyúsok" }));
 });
 
 test("join needs accepted community rules", async () => {

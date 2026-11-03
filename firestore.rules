@@ -24,10 +24,10 @@ service cloud.firestore {
 
     // profanity: KEEP IN SYNC with web/src/profanity.js (STEMS / NAME_STEMS). Stems match at a word start.
     function badText(s) {
-      return s.lower().matches('(?s)(.*[^\\p{L}])?(fasz|geci|kurv|picsa|picsá|punci|buzi|köcsög|kocsog|baszd|baszom|baszott|bazdmeg|bazmeg|ribanc|szopd|szopj|szopó|kibasz|elbasz|megbasz|fuck|shit|cunt|bitch|nigg|whore|slut|asshole|motherf|retard|faggot|rapist|puta|mierda|cabrón|cabron|gilipoll|pendej|maricón|maricon|joder|coño|verga|culero|nazi|hitler).*');
+      return s.lower().matches('(?s)(.*[^\\p{L}])?(fasz|geci|kurv|picsa|picsá|punci|buzi|köcsög|kocsog|baszd|baszom|baszott|bazdmeg|bazmeg|ribanc|szopd|szopj|szopó|kibasz|elbasz|megbasz|segg|fuck|shit|cunt|bitch|nigg|whore|slut|asshole|motherf|retard|faggot|rapist|puta|mierda|cabrón|cabron|gilipoll|pendej|maricón|maricon|joder|coño|verga|culero|nazi|hitler).*');
     }
     function badName(s) {
-      return s.lower().replace('[_-]', '').matches('.*(fasz|geci|kurv|picsa|punci|buzi|kocsog|baszd|baszom|baszott|bazdmeg|bazmeg|ribanc|szopd|szopj|kibasz|elbasz|megbasz|fuck|shit|cunt|bitch|nigg|whore|slut|asshole|motherf|retard|faggot|rapist|puta|mierda|cabron|gilipoll|pendej|maricon|joder|verga|culero|nazi|hitler).*');
+      return s.lower().replace('[_-]', '').matches('.*(fasz|geci|kurv|picsa|punci|buzi|kocsog|baszd|baszom|baszott|bazdmeg|bazmeg|ribanc|szopd|szopj|kibasz|elbasz|megbasz|segg|fuck|shit|cunt|bitch|nigg|whore|slut|asshole|motherf|retard|faggot|rapist|puta|mierda|cabron|gilipoll|pendej|maricon|joder|verga|culero|nazi|hitler).*');
     }
     function cleanText(s, max) { return text(s, max) && !badText(s); }
     // username: 3–20 chars, English letters, digits, - and _; unique via usernames/{lowercase}
@@ -93,6 +93,73 @@ service cloud.firestore {
         && getAfter(usernameDoc(request.resource.data.nick.lower())).data.uid == me();
     }
 
+    // ---------- stats/{uid}: public XP + membership ledger ----------
+    // xp: +10 once per UTC day, +50 the first time you join (or found) a given tribe, +100 to the
+    // inviter when someone joins a tribe for the first time through their link.
+    // teams: {team: number of my current tribes of that team} – at most 3 teams.
+    // current: my tribe ids now; joined: every tribe id I ever joined (no XP farming by leave + rejoin).
+    function statsDoc(u) { return /databases/$(database)/documents/stats/$(u); }
+    function dailyClaim() {
+      return changedOnly(['xp', 'lastDailyAt'])
+        && request.resource.data.xp == resource.data.xp + 10
+        && request.resource.data.lastDailyAt == request.time
+        && request.time.date() > resource.data.lastDailyAt.date();
+    }
+    function joinLedger() {
+      let b = resource.data;
+      let a = request.resource.data;
+      let tid = a.lastJoin;
+      let team = getAfter(tribe(tid)).data.team;
+      let first = !(tid in b.joined);
+      return changedOnly(['xp', 'teams', 'joined', 'current', 'lastJoin'])
+        && !exists(member(tid, me())) && existsAfter(member(tid, me()))
+        && !(tid in b.current) && a.current == b.current.concat([tid])
+        && a.teams.get(team, 0) == b.teams.get(team, 0) + 1
+        && a.teams.diff(b.teams).affectedKeys().hasOnly([team])
+        && a.teams.size() <= 3
+        && a.joined == (first ? b.joined.concat([tid]) : b.joined)
+        && a.xp == b.xp + (first ? 50 : 0);
+    }
+    function leaveLedger() {
+      let b = resource.data;
+      let a = request.resource.data;
+      let tid = a.lastLeave;
+      let team = get(tribe(tid)).data.team;
+      let had = tid in b.current;
+      let n = b.teams.get(team, 0);
+      return changedOnly(['teams', 'current', 'lastLeave'])
+        && exists(member(tid, me())) && !existsAfter(member(tid, me()))
+        && a.current == b.current.removeAll([tid])
+        && (!had || n < 1 ? a.teams == b.teams
+          : (n == 1 ? !(team in a.teams) : a.teams.get(team, 0) == n - 1)
+            && a.teams.diff(b.teams).affectedKeys().hasOnly([team]));
+    }
+    // written by the joiner onto the inviter's stats, in the same batch as the join
+    function referralCredit(uid) {
+      let mine = statsDoc(me());
+      let tid = getAfter(mine).data.lastJoin;
+      return uid != me() && changedOnly(['xp', 'refs'])
+        && request.resource.data.xp == resource.data.xp + 100
+        && request.resource.data.refs == resource.data.refs + 1
+        && !exists(member(tid, me())) && existsAfter(member(tid, me()))
+        && getAfter(member(tid, me())).data.ref == uid
+        && !(tid in get(mine).data.joined);
+    }
+    match /stats/{uid} {
+      allow read: if true;
+      // created by the first daily claim
+      allow create: if signedIn() && me() == uid
+        && request.resource.data.keys().hasOnly(['xp', 'lastDailyAt', 'refs', 'teams', 'joined', 'current'])
+        && request.resource.data.xp == 10 && request.resource.data.lastDailyAt == request.time
+        && request.resource.data.refs == 0 && request.resource.data.teams == {}
+        && request.resource.data.joined == [] && request.resource.data.current == [];
+      allow update: if signedIn() && (
+        (me() == uid && (dailyClaim() || joinLedger() || leaveLedger()))
+        || referralCredit(uid)
+      );
+      allow delete: if false;
+    }
+
     // ---------- usernames/{lowercase}: uniqueness claims ----------
     match /usernames/{name} {
       allow read: if true;
@@ -110,8 +177,10 @@ service cloud.firestore {
       allow read: if true;
 
       allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['team', 'city', 'cityOsm', 'country', 'lat', 'lng', 'memberCount', 'createdAt', 'lastActivityAt'])
+        && request.resource.data.keys().hasOnly(['team', 'name', 'city', 'cityOsm', 'country', 'lat', 'lng', 'memberCount', 'createdAt', 'lastActivityAt'])
         && text(request.resource.data.team, 40)
+        // optional custom name; the team is still shown next to it as a tag
+        && (!('name' in request.resource.data) || (cleanText(request.resource.data.name, 40) && request.resource.data.name.trim().size() >= 3))
         && text(request.resource.data.city, 80)
         && request.resource.data.country is string && request.resource.data.country.size() <= 80
         && request.resource.data.cityOsm.matches('^[NWR][0-9]{1,12}$')
@@ -146,10 +215,14 @@ service cloud.firestore {
       match /members/{uid} {
         allow read: if true;
         allow create: if signedIn() && me() == uid
-          && request.resource.data.keys().hasOnly(['nick', 'role', 'joinedAt'])
+          && request.resource.data.keys().hasOnly(['nick', 'role', 'joinedAt', 'ref'])
           && exists(userDoc(uid)) && ('rulesAt' in get(userDoc(uid)).data)
           && request.resource.data.nick == get(userDoc(uid)).data.nick
           && request.resource.data.joinedAt == request.time
+          // who invited me (their uid from the invite link); never myself
+          && (!('ref' in request.resource.data) || (request.resource.data.ref is string && request.resource.data.ref != uid))
+          // the membership ledger (3-team limit, XP) must be updated in the same batch
+          && getAfter(statsDoc(uid)).data.lastJoin == tid
           && (
             // founding captain: the tribe doc is created in the same batch
             (request.resource.data.role == 'captain' && !exists(tribe(tid)) && existsAfter(tribe(tid)))
@@ -165,7 +238,8 @@ service cloud.firestore {
           && request.resource.data.lastPostAt == request.time
           && (!('lastPostAt' in resource.data) || request.time > resource.data.lastPostAt + duration.value(20, 's'));
         allow delete: if signedIn() && me() == uid
-          && getAfter(tribe(tid)).data.memberCount == get(tribe(tid)).data.memberCount - 1;
+          && getAfter(tribe(tid)).data.memberCount == get(tribe(tid)).data.memberCount - 1
+          && (!exists(statsDoc(uid)) || getAfter(statsDoc(uid)).data.lastLeave == tid);
       }
 
       match /posts/{pid} {

@@ -153,12 +153,26 @@ body.sheet-open .cta{display:none}
 .seg3{grid-template-columns:repeat(3,1fr)}
 .tribes-box{display:flex;flex-direction:column;gap:10px;margin:0 8px}
 .newtribe{padding:11px 16px;border-radius:999px;align-self:flex-start}
-.tribe-mk{display:flex;align-items:center;gap:7px;border:0;background:var(--paper);color:var(--ink);border-radius:999px;padding:6px 10px 6px 8px;box-shadow:var(--shadow);font:600 12px/1 var(--f-body);cursor:pointer;white-space:nowrap;transition:transform .15s}
-.tribe-mk:hover{transform:scale(1.06)}
-.tribe-mk .dot{width:10px;height:10px;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 8%,transparent)}
-.tribe-mk .nm{max-width:110px;overflow:hidden;text-overflow:ellipsis}
-.tribe-mk b{font-variant-numeric:tabular-nums;color:var(--cobalt)}
-#map.lowzoom .tribe-mk .nm{display:none}
+.tribe-mk{display:flex;align-items:center;gap:10px;border:0;background:var(--paper);color:var(--ink);border-radius:var(--r-md);padding:9px 14px 9px 11px;box-shadow:var(--shadow);font:500 12px/1.2 var(--f-body);cursor:pointer;white-space:nowrap;text-align:left;transition:transform .15s}
+.tribe-mk:hover{transform:translateY(-2px)}
+.tribe-mk .dot{width:12px;height:12px;flex:none}
+.tm-text,.tr-text{display:flex;flex-direction:column;gap:3px;min-width:0}
+.tm-top{display:flex;align-items:center;gap:6px;min-width:0}
+.tm-top b{font:700 13px/1.15 var(--f-display);letter-spacing:-.01em;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.tm-meta,.tr-sub{font-size:11px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.team-tag{display:inline-block;background:var(--wash);color:var(--mute);border-radius:999px;padding:2px 7px;font:600 10px/1.3 var(--f-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+.tribe-row{width:100%;display:flex !important;align-items:center;gap:12px}
+.tribe-row .dot{width:10px;height:10px;flex:none}
+.tribe-tagline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
+.tribe-tagline .tribe-sub{margin-top:0}
+.xp{display:flex;flex-direction:column;gap:6px}
+.xp-top{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--mute)}
+.xp-top b{font:800 15px/1 var(--f-display);color:var(--ink)}
+.xp-bar{height:8px;border-radius:999px;background:var(--wash);overflow:hidden}
+.xp-bar i{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,var(--cobalt),color-mix(in srgb,var(--cobalt) 55%,#ffd84a));transition:width .6s ease}
+.mytribes{display:flex;flex-direction:column;gap:4px}
+.mytribes .label{font-size:12px;color:var(--mute);font-weight:500}
+.mytribes .teams{max-height:180px;overflow:auto}
 .tribe-head{display:flex;align-items:center;gap:12px;min-width:0}
 .tribe-head .dot{width:14px;height:14px;flex:none}
 .tribe-head h2{font-size:24px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

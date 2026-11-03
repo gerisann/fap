@@ -106,6 +106,14 @@
       <button id="mpDel" data-i18n="deletePinShort"></button>
     </div>
     <div class="nopin" id="noPinBox" hidden><span data-i18n="noPin"></span><button class="chipbtn" id="mpAdd" data-i18n="cta"></button></div>
+    <div class="xp" id="xpBox" hidden>
+      <div class="xp-top"><b id="xpLevel"></b><span id="xpPts"></span></div>
+      <div class="xp-bar"><i id="xpFill"></i></div>
+    </div>
+    <div class="mytribes" id="myTribesBox" hidden>
+      <div class="label" data-i18n="myTribes"></div>
+      <ul class="teams" id="myTribesList"></ul>
+    </div>
   </div>
 
   <div class="status" id="acctStatus" role="status"></div>
@@ -175,7 +183,7 @@
 <!-- tribe: city + team community with a feed. Composer inputs are masked from session recordings. -->
 <aside class="sheet tribe-sheet" id="tribeSheet" hidden data-i18n-attr="aria-label:tribe">
   <div class="sheet-head">
-    <div class="tribe-head"><span class="dot" id="tsDot"></span><div><h2 id="tsTitle"></h2><div class="tribe-sub" id="tsSub"></div></div></div>
+    <div class="tribe-head"><span class="dot" id="tsDot"></span><div><h2 id="tsTitle"></h2><div class="tribe-tagline"><span id="tsTag"></span><span class="tribe-sub" id="tsSub"></span></div></div></div>
     <button class="x" id="tsClose" data-i18n-attr="aria-label:close">✕</button>
   </div>
 
@@ -187,6 +195,10 @@
         <input class="field" id="tcCity" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="tcCityOpts" data-i18n-attr="placeholder:searchCity;aria-label:areaCity">
         <ul id="tcCityOpts" role="listbox" hidden></ul>
       </div>
+    </div>
+    <div class="step">
+      <div class="label" data-i18n="tribeName"></div>
+      <input class="field" id="tcName" maxlength="40" autocomplete="off" data-i18n-attr="placeholder:tribeNamePh;aria-label:tribeName">
     </div>
     <button class="save" id="tcSave" disabled data-i18n="createTribe"></button>
   </div>

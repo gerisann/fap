@@ -5,7 +5,7 @@
 export const STEMS = [
   // hu
   "fasz", "geci", "kurv", "picsa", "picsá", "punci", "buzi", "köcsög", "kocsog", "baszd", "baszom", "baszott", "bazdmeg", "bazmeg",
-  "ribanc", "szopd", "szopj", "szopó", "kibasz", "elbasz", "megbasz",
+  "ribanc", "szopd", "szopj", "szopó", "kibasz", "elbasz", "megbasz", "segg",
   // en
   "fuck", "shit", "cunt", "bitch", "nigg", "whore", "slut", "asshole", "motherf", "retard", "faggot", "rapist",
   // es

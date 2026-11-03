@@ -31,7 +31,7 @@ let view = "pins", selected = [], showDemo = true;
 let area = null;                 // { level, name, geom, test(lng, lat) }; null = whole world
 let tribes = null;               // tribe layer + sheet (tribes.js), set up after the board
 let real = new Map();            // uid -> pin from the shared store
-let user = null, myPin = null, backend = null, loginMethod = null, profile = null;
+let user = null, myPin = null, backend = null, loginMethod = null, profile = null, stats = null, unsubStats = null;
 const DRAFT = "tm.draft";        // blurred pin waiting for sign-in; never the raw location
 try { localStorage.removeItem("tm.mypin"); } catch (_) {} // device-only pins from before sign-in existed
 function points() { const arr = showDemo ? DEMO.slice() : []; for (const p of real.values()) arr.push(p); return arr; }
@@ -478,11 +478,30 @@ function renderAccount() {
   $("#acctOut").hidden = signed; $("#acctIn").hidden = !signed; $("#signOutBtn").hidden = !signed;
   if (signed) $("#acctLogin").hidden = true;
   $("#myPinBox").hidden = $("#myPinActs").hidden = !myPin; $("#noPinBox").hidden = !signed || !!myPin;
+  renderXp(); renderMyTribes();
   if (myPin) { $("#mpDot").style.background = colorOf(myPin.t); $("#mpTeam").textContent = myPin.t; $("#mpSub").textContent = t("myPin") + " · " + t(PREC_KEY[myPin.p] || "precArea"); }
 }
 $("#acctBtn").onclick = () => { document.body.classList.toggle("acct-open"); track("account_open"); };
 $("#acctClose").onclick = closeAccount;
 $("#acctLoginBtn").onclick = () => { const box = $("#acctLogin"); box.hidden = !box.hidden; track("login_open"); };
+/* XP + level: level L needs 50·L·(L-1) XP in total (0, 100, 300, 600, 1000, …) */
+const xpFor = L => 50 * L * (L - 1);
+function levelOf(xp) { let L = 1; while (xp >= xpFor(L + 1)) L++; return L; }
+function renderXp() {
+  const box = $("#xpBox"); box.hidden = !user || !stats; if (box.hidden) return;
+  const xp = stats.xp || 0, L = levelOf(xp), lo = xpFor(L), hi = xpFor(L + 1);
+  $("#xpLevel").textContent = t("level", { n: L });
+  $("#xpPts").textContent = t("xpPts", { xp: num(xp), left: num(hi - xp) });
+  $("#xpFill").style.width = Math.round((xp - lo) / (hi - lo) * 100) + "%";
+}
+function renderMyTribes() {
+  const box = $("#myTribesBox"), ul = $("#myTribesList"), ids = stats?.current || [];
+  box.hidden = !user || !stats; if (box.hidden) return;
+  ul.replaceChildren();
+  for (const id of ids) { const tr = tribes?.get(id); if (tr) ul.append(tribes.row(tr)); }
+  if (!ul.children.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = t("noMyTribes"); ul.append(li); }
+}
+
 /* optional username (also the tribe nickname): unique, English letters, digits, - and _ */
 function openUnameForm() { $("#unameForm").hidden = false; $("#unameAdd").hidden = true; const i = $("#unameInput"); i.value = profile?.nick && validUsername(profile.nick) ? profile.nick : ""; i.focus(); }
 $("#unameAdd").onclick = openUnameForm; $("#unameEdit").onclick = openUnameForm;
@@ -560,6 +579,7 @@ tribes = initTribes({
   openAuth: () => { $("#acctLogin").hidden = false; if (phone.matches) document.body.classList.add("acct-open"); },
   setSheetOpen: open => document.body.classList.toggle("sheet-open", open || !sheet.hidden),
   onProfile: p => { profile = p; renderAccount(); showMine(myPin); },
+  stats: () => stats, onTribes: () => renderMyTribes(),
 });
 if (location.pathname.startsWith("/t/")) setView("tribes");
 
@@ -571,6 +591,12 @@ import("./firebase.js").then(async fb => {
     user = u; profile = null;
     tribes.onUser(u);
     if (u) fb.getProfile().then(p => { profile = p; renderAccount(); showMine(myPin); }).catch(() => {});
+    unsubStats?.(); unsubStats = null; stats = null;
+    if (u) {
+      unsubStats = fb.watchStats(s => { stats = s; renderAccount(); });
+      // +10 XP once per (UTC) day for showing up; also creates the ledger for first-time users
+      fb.claimDaily().then(got => { if (got) { acctStatus(t("dailyXp")); track("xp_daily"); } }).catch(() => {});
+    }
     if (u) { authBox.hidden = true; $("#saveBtn").hidden = false; if (loginMethod) { track("login_success", { method: loginMethod }); loginMethod = null; } }
     updateMine();
     const d = u && readDraft(); if (d) { openSheet(); publish(d); }
