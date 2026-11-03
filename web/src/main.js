@@ -2,7 +2,8 @@ import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "./style.css";
-import { TEAMS } from "./data/teams.js";
+import { TEAMS as CURATED } from "./data/teams.js";
+import { API_TEAMS } from "./data/teams-api.js";
 import { blur, makeDemo } from "./data/demo.js";
 import { loadStyle } from "./basemap.js";
 import { searchCities, searchAddress, searchAreas } from "./geocode.js";
@@ -19,11 +20,16 @@ maplibregl.setWorkerUrl(workerUrl); // v6 + bundler: the worker URL must be give
 applyDom();
 
 /* ---------- teams ---------- */
+// curated teams (crest colours) first, then the API-Football list (scripts/fetch-teams.mjs, hashed colours)
+const TEAMS = [...CURATED, ...API_TEAMS.map(([n, c]) => [n, c, null])];
+const fold = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const TEAM_F = TEAMS.map(([n]) => fold(n));
 const teamMeta = new Map(TEAMS.map(([n, c, col]) => [n.toLowerCase(), { name: n, country: c, color: col }]));
+const teamByFold = new Map(TEAMS.map(([n], i) => [TEAM_F[i], n]).reverse()); // first spelling wins
 const aliases = { "fradi": "Ferencváros", "ftc": "Ferencváros", "barca": "FC Barcelona", "barça": "FC Barcelona", "bayern": "Bayern München", "man utd": "Manchester United", "psg": "Paris Saint-Germain", "bvb": "Borussia Dortmund", "spurs": "Tottenham Hotspur", "juve": "Juventus", "dvsc": "Debreceni VSC", "dvtk": "Diósgyőr", "fehérvár": "Videoton / MOL Fehérvár" };
 function hashColor(s) { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `hsl(${h % 360} 70% 58%)`; }
-function canonical(name) { const k = name.trim().toLowerCase(); const m = teamMeta.get(k) || teamMeta.get((aliases[k] || "").toLowerCase()); return m ? m.name : name.trim().replace(/\s+/g, " ").slice(0, 40); }
-function colorOf(name) { const m = teamMeta.get(name.toLowerCase()); return m ? m.color : hashColor(name); }
+function canonical(name) { const k = name.trim().toLowerCase(); const m = teamMeta.get(k) || teamMeta.get((aliases[k] || "").toLowerCase()) || teamMeta.get((teamByFold.get(fold(k)) || "").toLowerCase()); return m ? m.name : name.trim().replace(/\s+/g, " ").slice(0, 40); }
+function colorOf(name) { const m = teamMeta.get(name.toLowerCase()); return m && m.color ? m.color : hashColor(name); }
 const DEMO = makeDemo(24000);
 
 /* ---------- state ---------- */
@@ -395,8 +401,10 @@ const ti = $("#teamInput"), opts = $("#teamOpts"); let optIdx = 0, optList = [];
 function showOpts() {
   const q = ti.value.trim().toLowerCase();
   if (!q) { opts.hidden = true; ti.setAttribute("aria-expanded", "false"); return; }
-  const al = aliases[q];
-  optList = TEAMS.filter(([n]) => n.toLowerCase().includes(q) || (al && n === al)).slice(0, 8).map(x => x[0]);
+  const al = aliases[q], qf = fold(q);
+  // alias, then name start, then word start, then anywhere; ties keep the curated-first order
+  const rank = (n, f) => n === al ? 0 : f.startsWith(qf) ? 1 : f.includes(" " + qf) ? 2 : f.includes(qf) ? 3 : 9;
+  optList = TEAMS.map(([n], i) => [n, rank(n, TEAM_F[i])]).filter(x => x[1] < 9).sort((a, b) => a[1] - b[1]).slice(0, 8).map(x => x[0]);
   if (!optList.some(n => n.toLowerCase() === q)) optList.push({ custom: ti.value.trim().slice(0, 40) });
   optIdx = 0; opts.replaceChildren();
   optList.forEach((o, i) => {

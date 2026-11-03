@@ -1,0 +1,38 @@
+name: Teams from API-Football
+
+# Monthly (and on demand): club leagues + national teams -> web/src/data/teams-api.js (~65 requests, paced
+# for the free plan's per-minute limit). The app picks the new list up on the next hosting deploy.
+on:
+  schedule:
+    - cron: "40 5 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fixtures
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fetch teams
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: node scripts/fetch-teams.mjs
+      - name: Commit if changed
+        run: |
+          git config user.name "tribemap-bot"
+          git config user.email "tribemap-bot@users.noreply.github.com"
+          git add web/src/data/teams-api.js
+          if git diff --cached --quiet; then echo "no change"; exit 0; fi
+          git commit -m "Teams from API-Football $(date -u +%F)"
+          git pull --rebase
+          git push

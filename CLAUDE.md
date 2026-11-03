@@ -15,7 +15,7 @@ Anonim szurkolói világtérkép. Bárki bejelöli, hol él vagy tartózkodik, �
   - Város: ~0,05°-os (kb. 5 km) rácsra igazítás
   - Pontos: változatlan
   Az elmosás a kliensen történik, mentés előtt (`blur()`).
-- **Bármilyen csapat választható:** előtöltött lista (`src/teams.js`, címerszínekkel) + szabad beírás, aliasokkal (fradi → Ferencváros stb.).
+- **Bármilyen csapat választható:** kézi lista (`web/src/data/teams.js`, címerszínekkel, ez nyer) + API-Football lista (`web/src/data/teams-api.js`, generált, hash-színnel) + szabad beírás, aliasokkal (fradi → Ferencváros stb.), ékezetfüggetlen kereséssel. A generált listát a `.github/workflows/teams.yml` (havonta + kézzel) írja a `scripts/fetch-teams.mjs`-sel: ~60 első/második osztály + válogatottak, ~65 kérés, lassítva a free csomag percenkénti korlátja miatt; ha az évad nem érhető el a csomagban, a legújabb engedélyezettre lép vissza. Utána **hosting deploy** kell. Az API-azonosítóval rendelkező csapatokat a meccsnap azonosító alapján párosítja; névegyeztetés (`ALIASES`, `norm`): `web/src/teamkeys.js`. Bajnokság hozzáadása: `CLUBS` a szkriptben (az API ország + liga nevével), a napi keret 100 kérés.
 
 ## Funkciók (jelenleg)
 
