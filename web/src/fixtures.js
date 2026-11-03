@@ -22,11 +22,12 @@ function loadDay(date) {
 }
 const toFixture = x => ({ id: x[0], kickoff: x[1] * 1000, status: x[2], league: x[4], country: x[5], homeId: x[6], home: x[7], awayId: x[8], away: x[9] });
 
-/* Today's (local day) fixtures of a team that are not over yet. Local "today" can span two UTC files. */
-export async function todaysMatches(team, now = Date.now()) {
+/* A team's fixtures over `days` local days from today (2 = today + tomorrow, as far as the free plan sees).
+   Local days can span one more UTC file than there are days; a file not written yet just reads as empty. */
+export async function matchesOf(team, days = 1, now = Date.now()) {
   const start = new Date(now); start.setHours(0, 0, 0, 0);
-  const end = new Date(start); end.setDate(end.getDate() + 1);
-  const dates = [...new Set([utcDate(start.getTime()), utcDate(end.getTime() - 1)])];
+  const end = new Date(start); end.setDate(end.getDate() + days);
+  const dates = [...new Set([...Array(days + 1)].map((_, i) => utcDate(Math.min(start.getTime() + i * 86400000, end.getTime() - 1))))];
   const all = (await Promise.all(dates.map(loadDay))).flat().map(toFixture);
   const seen = new Set();
   return all.filter(f => f.kickoff >= start.getTime() && f.kickoff < end.getTime() && !seen.has(f.id) && seen.add(f.id))
@@ -34,5 +35,6 @@ export async function todaysMatches(team, now = Date.now()) {
     .map(f => ({ ...f, side: isTeam(team, f.home, f.homeId) ? "h" : "a", over: DONE.has(f.status) || now > f.kickoff + MATCH_MS }))
     .sort((a, b) => a.kickoff - b.kickoff);
 }
+export const todaysMatches = (team, now = Date.now()) => matchesOf(team, 1, now);
 // "cheering is open all day long until the match is over"
 export const cheerOpen = f => !!f && !f.over;

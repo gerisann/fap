@@ -132,6 +132,8 @@ export default {
   hideCheers: "Térkép elrejtése",
   kickoffAt: "kezdés {time}",
   matchLive: "most játsszák",
+  nextMatches: "Meccsek ma és holnap",
+  matchOver: "vége",
   cheersN: "{n} szurkoló",
   cookies: "Sütik",
   privacyMore: "Adatvédelmi tájékoztató",

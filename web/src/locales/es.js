@@ -132,6 +132,8 @@ export default {
   hideCheers: "Ocultar mapa",
   kickoffAt: "empieza {time}",
   matchLive: "en juego",
+  nextMatches: "Partidos hoy y mañana",
+  matchOver: "final",
   cheersN: "{n} aficionados",
   cookies: "Cookies",
   privacyMore: "Aviso de privacidad",

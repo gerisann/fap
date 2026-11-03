@@ -156,6 +156,14 @@ body.sheet-open .cta{display:none}
 .tribe-mk{display:flex;align-items:center;gap:10px;border:0;background:var(--paper);color:var(--ink);border-radius:var(--r-md);padding:9px 14px 9px 11px;box-shadow:var(--shadow);font:500 12px/1.2 var(--f-body);cursor:pointer;white-space:nowrap;text-align:left;transition:transform .15s}
 .tribe-mk:hover{transform:translateY(-2px)}
 .tribe-mk .dot{width:12px;height:12px;flex:none}
+/* map badges stay small; tribes.js hides them below TRIBE_ZOOM and drops the meta line until TRIBE_ZOOM_FULL */
+.tribe-mk{gap:7px;padding:5px 10px 5px 8px;border-radius:var(--r-sm)}
+.tribe-mk .dot{width:8px;height:8px}
+.tribe-mk .tm-text{gap:1px}
+.tribe-mk .tm-top b{font-size:11.5px;max-width:120px}
+.tribe-mk .tm-meta{font-size:10px}
+.tribe-mk .team-tag{font-size:9px;padding:1px 6px}
+.tribe-mk.compact .tm-meta,.tribe-mk.compact .team-tag{display:none}
 .tm-text,.tr-text{display:flex;flex-direction:column;gap:3px;min-width:0}
 .tm-top{display:flex;align-items:center;gap:6px;min-width:0}
 .tm-top b{font:700 13px/1.15 var(--f-display);letter-spacing:-.01em;max-width:150px;overflow:hidden;text-overflow:ellipsis}
@@ -194,6 +202,16 @@ body.sheet-open .cta{display:none}
 .composer textarea{resize:vertical;min-height:46px;max-height:160px;font-size:14px}
 .composer .chipbtn{padding:12px 16px;border-radius:var(--r-md)}
 .composer.sm .chipbtn{padding:9px 14px;border-radius:999px;font-size:13px}
+/* match schedule in the tribe sheet: today + tomorrow */
+.fixtures h3{margin:0 0 6px;font:600 12px/1.2 "Instrument Sans",sans-serif;color:var(--mute);letter-spacing:.02em}
+.fixtures ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.fixtures li{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;align-items:baseline;background:var(--wash);border-radius:var(--r-sm);padding:9px 12px}
+.fixtures li.over{opacity:.55}
+.fx-when{font-size:12px;font-weight:600;color:var(--mute);white-space:nowrap;font-variant-numeric:tabular-nums}
+.fx-when.live{color:var(--cobalt)}
+.fx-teams{font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fx-teams b{font-weight:600}
+.fx-league{grid-column:2;font-size:12px;color:var(--mute)}
 .feed{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .feed > li{background:var(--wash);border-radius:var(--r-md);padding:12px 14px}
 .feed > li.empty{background:transparent;color:var(--mute);font-size:13px;text-align:center;padding:18px}

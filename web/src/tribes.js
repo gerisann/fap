@@ -2,6 +2,7 @@
    All access rules live in firestore.rules; the checks here only give friendlier messages first. */
 
 import { isProfane, isBadName } from "./profanity.js";
+import { matchesOf } from "./fixtures.js";
 
 const $ = s => document.querySelector(s);
 const CHECKIN_MS = 72 * 3600 * 1000;
@@ -66,6 +67,11 @@ export function initTribes(ctx) {
   }
 
   /* ---------- map badges + board list ---------- */
+  // badges only from region level (zoomed out they cover whole countries), the meta line only from city level
+  const TRIBE_ZOOM = 7, TRIBE_ZOOM_FULL = 10;
+  const band = z => z < TRIBE_ZOOM ? 0 : z < TRIBE_ZOOM_FULL ? 1 : 2;
+  let zoomBand = null;
+  map.on("zoomend", () => { if (visible && band(map.getZoom()) !== zoomBand) render(); });
   function shown() {
     const sel = ctx.selected();
     return tribes.filter(tr => tr.memberCount > 0 && ctx.inScope(tr.lng, tr.lat) && (!sel.length || sel.includes(tr.team)));
@@ -73,12 +79,13 @@ export function initTribes(ctx) {
   function render() {
     for (const mk of markers.values()) mk.remove(); markers = new Map();
     const list = shown().sort((a, b) => b.memberCount - a.memberCount);
-    if (visible) {
+    const z = map.getZoom(); zoomBand = band(z);
+    if (visible && z >= TRIBE_ZOOM) {
       // several tribes in one city share a centre: fan them out around it
       const byCity = new Map(); for (const tr of list) { const k = tr.cityOsm; byCity.set(k, [...(byCity.get(k) || []), tr]); }
       for (const group of byCity.values()) group.forEach((tr, i) => {
         const n = group.length, a = i / n * 2 * Math.PI - Math.PI / 2, r = n > 1 ? 26 + n * 3 : 0;
-        const el = document.createElement("button"); el.className = "tribe-mk"; el.title = titleOf(tr) + " · " + tr.city;
+        const el = document.createElement("button"); el.className = "tribe-mk" + (z < TRIBE_ZOOM_FULL ? " compact" : ""); el.title = titleOf(tr) + " · " + tr.city;
         const d = document.createElement("span"); d.className = "dot"; d.style.background = ctx.colorOf(tr.team);
         const txt = document.createElement("span"); txt.className = "tm-text";
         const top = document.createElement("span"); top.className = "tm-top";
@@ -124,6 +131,29 @@ export function initTribes(ctx) {
     $("#tsDot").style.background = ctx.colorOf(team); $("#tsTitle").textContent = title; $("#tsSub").textContent = sub;
     const slot = $("#tsTag"); slot.replaceChildren(); if (tag) slot.append(teamTag(tag));
   }
+  // the team's matches today and tomorrow (fixtures.yml snapshots; the free plan sees no further ahead)
+  async function renderFixtures(tr) {
+    const box = $("#tsFixtures"); box.hidden = true;
+    const list = await matchesOf(tr.team, 2).catch(() => []);
+    if (open?.id !== tr.id) return;
+    $("#tsFxList").replaceChildren(...list.map(fixtureRow));
+    box.hidden = !list.length;
+  }
+  function fixtureRow(f) {
+    const li = document.createElement("li"), live = !f.over && Date.now() >= f.kickoff; li.classList.toggle("over", f.over);
+    const when = document.createElement("span"); when.className = "fx-when" + (live ? " live" : "");
+    const day = new Intl.RelativeTimeFormat(ctx.locale(), { numeric: "auto" }).format(Math.round((new Date(f.kickoff).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000), "day");
+    const hhmm = new Intl.DateTimeFormat(ctx.locale(), { hour: "2-digit", minute: "2-digit" }).format(f.kickoff);
+    when.textContent = f.over ? t("matchOver") : live ? t("matchLive") : day.charAt(0).toUpperCase() + day.slice(1) + " " + hhmm;
+    const teams = document.createElement("span"); teams.className = "fx-teams";
+    for (const [name, side, i] of [[f.home, "h", 0], [f.away, "a", 1]]) {
+      if (i) teams.append(" – ");
+      const el = document.createElement(side === f.side ? "b" : "span"); el.textContent = name; teams.append(el);
+    }
+    const lg = document.createElement("span"); lg.className = "fx-league"; lg.textContent = f.league;
+    li.append(when, teams, lg);
+    return li;
+  }
   function gate(textKey, btnKey, action, vars) {
     const g = $("#tsGate"); g.hidden = !textKey; if (!textKey) return;
     $("#tsGateText").textContent = t(textKey, vars); const b = $("#tsGateBtn"); b.hidden = !btnKey;
@@ -134,8 +164,10 @@ export function initTribes(ctx) {
   function openTribe(id, source) {
     const tr = tribes.find(x => x.id === id);
     if (!tr) { if (source === "link") status(t("tribeMissing"), true); return; }
-    if (!open || open.id !== id) { stopWatching(); feed.replaceChildren(); status(""); }
+    const fresh = !open || open.id !== id;
+    if (fresh) { stopWatching(); feed.replaceChildren(); status(""); }
     open = tr;
+    if (fresh) renderFixtures(tr);
     $("#tsCreate").hidden = true; $("#tsActions").hidden = false; $("#tsNick").hidden = true; gate(null);
     head(tr.team, subOf(tr), titleOf(tr), tr.name ? tr.team : null);
     showSheet();
@@ -240,7 +272,7 @@ export function initTribes(ctx) {
   });
   function startCreate() {
     stopWatching(); open = null; feed.replaceChildren(); status(""); gate(null);
-    $("#tsActions").hidden = true; $("#tsComposer").hidden = true; $("#tsNick").hidden = true;
+    $("#tsActions").hidden = true; $("#tsComposer").hidden = true; $("#tsNick").hidden = true; $("#tsFixtures").hidden = true;
     const pin = ctx.myPin();
     head(pin ? pin.t : t("newTribe"), t("newTribeSub"));
     showSheet();
@@ -262,7 +294,12 @@ export function initTribes(ctx) {
     if (!nearReason(tr)) { gate("gateNear", "imHere", () => checkInHere(() => { gate(null); create(); }), { city: tr.city }); return; }
     if (!(await teamSlotOk(tr.team))) { gate("teamLimit"); return; }
     $("#tcSave").disabled = true;
-    try { await fb.createTribe(tr, profile.nick); track("tribe_create", { team: tr.team, custom: !!name }); pendingOpen = tid; status(t("created") + " +50 XP"); }
+    try {
+      await fb.createTribe(tr, profile.nick); track("tribe_create", { team: tr.team, custom: !!name });
+      // the local write already fired the tribes snapshot: open it now, or once the snapshot brings it
+      if (tribes.some(x => x.id === tid)) openTribe(tid, "create"); else pendingOpen = tid;
+      status(t("created") + " +50 XP");
+    }
     catch (e) { $("#tcSave").disabled = false; status(t(e.code === "permission-denied" ? "gateNearShort" : "saveFailed"), true); track("tribe_create_error", { code: e.code || "unknown" }); }
   };
 
