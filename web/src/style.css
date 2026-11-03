@@ -371,4 +371,7 @@ a.privacy{text-decoration:none}
   .sheet{top:auto;bottom:0;left:0;right:0;width:auto;max-height:82%;border-radius:26px 26px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom,0px));padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));gap:20px}
   .cta{bottom:calc(18px + env(safe-area-inset-bottom,0px))}
 }
+/* the app never zooms as a page (pinch, double tap, iOS focus zoom below 16px): only the map zooms, on its own */
+html{touch-action:pan-x pan-y}
+@media (pointer:coarse){input,textarea,select,.field,.field.sm{font-size:16px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}

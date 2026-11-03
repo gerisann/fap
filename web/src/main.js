@@ -17,6 +17,8 @@ import { t, num, lang, locale, applyDom, setLang, onLangChange } from "./i18n.js
 import { track, initAnalytics, consent, setConsent } from "./analytics.js";
 
 const $ = s => document.querySelector(s);
+// older iOS Safari pinch-zooms the page through gesture events; the map pinches by itself
+document.addEventListener("gesturestart", e => { if (!e.target.closest?.("#map")) e.preventDefault(); }, { passive: false });
 maplibregl.setWorkerUrl(workerUrl); // v6 + bundler: the worker URL must be given explicitly
 applyDom();
 
