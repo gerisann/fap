@@ -45,17 +45,33 @@ button{cursor:pointer}
 .board-head{display:flex;align-items:flex-end;justify-content:space-between;padding:22px 22px 0}
 .logo{font:800 30px/.8 var(--f-display);letter-spacing:-.04em}
 .logo i{font-style:normal;color:var(--cobalt)}
-.score{text-align:right;line-height:1.15}
-.score b{display:block;font:600 19px/1 var(--f-display);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.score span{font-size:12px;color:var(--mute)}
-.board-body{display:flex;flex-direction:column;gap:18px;padding:20px 14px 18px;overflow:auto;min-height:0}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:18px 14px 0}
+.stats div{background:var(--wash);border-radius:var(--r-md);padding:14px 14px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.stats b{font:800 24px/1 var(--f-display);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.stats span{font-size:12px;color:var(--mute);font-weight:500}
+.board-body{display:flex;flex-direction:column;gap:18px;padding:20px 14px 18px;overflow:hidden auto;min-height:0}
 .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--wash);border-radius:999px;padding:4px;margin:0 8px}
 .seg button{border:0;background:transparent;border-radius:999px;padding:9px 0;font-weight:500;color:var(--mute);transition:background .15s,color .15s}
 .seg button[aria-pressed="true"]{background:var(--paper);color:var(--ink);box-shadow:0 1px 3px rgba(22,24,28,.12)}
-#filterBox{margin:0 8px}
+#filterBox{margin:0 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 #filterBox:empty{display:none}
-.filter-chip{display:flex;align-items:center;gap:10px;background:var(--cobalt-soft);border-radius:999px;padding:6px 6px 6px 14px;font-weight:600}
-.filter-chip button{border:0;background:var(--paper);border-radius:50%;width:26px;height:26px;font-size:12px;color:var(--mute)}
+.filter-chip{display:inline-flex;align-items:center;gap:8px;background:var(--cobalt-soft);border-radius:999px;padding:4px 4px 4px 12px;font-weight:600;font-size:13px;max-width:100%}
+.filter-chip span:not(.dot){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filter-chip button{border:0;background:var(--paper);border-radius:50%;width:24px;height:24px;font-size:11px;color:var(--mute);flex:none}
+.chip-clear{border:0;background:transparent;color:var(--mute);font-size:12px;padding:4px 6px}
+.field.sm{padding:10px 16px;font-size:13px;border-radius:999px}
+#teamSearch,#teamHint,.area{margin:0 8px}
+#teamHint{color:var(--cobalt)}
+.area{display:flex;flex-direction:column;gap:8px}
+.seg4{grid-template-columns:repeat(4,1fr);margin:0}
+.seg4 button{font-size:12px;padding:8px 0}
+.range{display:flex;align-items:center;gap:10px;padding:0 4px}
+.range input{flex:1;accent-color:var(--cobalt);margin:0}
+.range b{font:600 13px/1 var(--f-body);font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
+.more{align-self:flex-start;margin:-12px 8px 0;color:var(--cobalt);font-weight:600}
+.teams .empty{color:var(--mute);font-size:12px;padding:8px 10px}
+.rc{width:14px;height:14px;border-radius:50%;background:var(--paper);border:4px solid var(--cobalt);box-shadow:var(--shadow);cursor:grab}
+.grab{display:none}
 .dot{width:9px;height:9px;border-radius:50%;flex:none}
 .teams{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .teams li button{width:100%;display:grid;grid-template-columns:9px 1fr auto;align-items:center;gap:12px;border:0;background:transparent;padding:9px 10px;border-radius:var(--r-sm);text-align:left;font-weight:500}
@@ -77,8 +93,6 @@ button{cursor:pointer}
 .is-dark .themebtn .moon{display:block}
 .foot-r{display:flex;align-items:center;gap:12px}
 #modeNote{margin:0;font-size:12px;color:var(--mute);text-align:right}
-details.more{display:contents}
-details.more summary{display:none}
 
 /* primary action */
 .cta{position:fixed;z-index:5;left:50%;transform:translateX(-50%);bottom:calc(26px + env(safe-area-inset-bottom,0px));
@@ -102,7 +116,8 @@ body.sheet-open .cta{display:none}
 .combo ul{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:3;list-style:none;margin:0;padding:6px;background:var(--paper);border-radius:var(--r-md);box-shadow:var(--shadow);max-height:240px;overflow:auto}
 .combo li{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r-sm);cursor:pointer}
 .combo li[aria-selected="true"],.combo li:hover{background:var(--wash)}
-.combo li small{margin-left:auto;color:var(--mute);font-size:11px}
+.combo li small{margin-left:auto;color:var(--mute);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%;flex:none}
+.combo li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .loc{display:grid;grid-template-columns:auto 1fr;gap:8px}
 .chipbtn{border:0;background:var(--ink);color:var(--paper);border-radius:var(--r-md);padding:0 16px;font-weight:600;font-size:14px}
 .loc select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mute) 50%),linear-gradient(135deg,var(--mute) 50%,transparent 50%);background-position:calc(100% - 20px) 52%,calc(100% - 15px) 52%;background-size:5px 5px;background-repeat:no-repeat;padding-right:36px}
@@ -134,6 +149,17 @@ body.sheet-open .cta{display:none}
 .me{width:16px;height:16px;border-radius:50%;background:var(--cobalt);border:3px solid var(--paper);box-shadow:0 0 0 6px color-mix(in srgb,var(--cobalt) 25%,transparent),var(--shadow)}
 .me.pending{background:var(--ink);cursor:grab}
 
+/* sign-in */
+.authbox{display:flex;flex-direction:column;gap:10px;background:var(--wash);border-radius:var(--r-md);padding:16px}
+.authbox p{margin:0 0 2px;font-size:13px;line-height:1.45}
+.gbtn{display:flex;align-items:center;justify-content:center;gap:10px;border:0;border-radius:999px;background:var(--paper);padding:13px;font-weight:600;box-shadow:0 1px 3px rgba(22,24,28,.12)}
+.gbtn svg{width:18px;height:18px}
+.or{text-align:center;font-size:12px;color:var(--mute)}
+.emailrow{display:grid;grid-template-columns:1fr auto;gap:8px;margin:0}
+.emailrow .field{background:var(--paper)}
+.myrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px 10px;font-size:12px;color:var(--mute)}
+.myrow span{flex-basis:100%;text-align:center}
+
 /* language + privacy */
 .langsel{appearance:none;border:0;background:var(--wash);height:32px;border-radius:999px;padding:0 12px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;cursor:pointer}
 .privacy{border:0;background:transparent;color:var(--mute);font-size:12px;padding:0;margin:0 8px;align-self:flex-start}
@@ -153,15 +179,16 @@ body.sheet-open .cta{display:none}
   .board{top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));right:calc(10px + env(safe-area-inset-right,0px));width:auto;border-radius:22px;max-height:none}
   .board-head{padding:16px 18px 0}
   .logo{font-size:26px}
-  .board-body{padding:14px 10px 12px;gap:12px;overflow:visible}
-  .seg{margin:0 6px}
-  #filterBox{margin:0 6px}
-  .teams{flex-direction:row;gap:6px;overflow-x:auto;scrollbar-width:none;padding:0 6px;margin:0 -10px;padding-left:16px;padding-right:16px}
-  .teams::-webkit-scrollbar{display:none}
-  .teams li{flex:none}
-  .teams li button{display:flex;gap:8px;background:var(--wash);border-radius:999px;padding:8px 12px;font-size:13px}
-  .teams .n{font-size:12px}
-  .foot{margin:0 6px}
+  .stats{padding:12px 10px 0;gap:6px}
+  .stats div{flex-direction:row;align-items:baseline;gap:8px;padding:10px 12px}
+  .stats b{font-size:19px}
+  /* collapsible top panel: tap the grip or swipe up / down */
+  .board-body{padding:14px 10px 4px;gap:12px;max-height:min(58vh,560px);transition:max-height .28s ease,opacity .2s ease,padding .28s ease}
+  .board.collapsed .board-body{max-height:0;opacity:0;padding-top:0;padding-bottom:0;overflow:hidden}
+  .grab{display:block;width:100%;border:0;background:transparent;padding:8px 0 10px;cursor:grab;touch-action:none}
+  .grab span{display:block;width:40px;height:5px;border-radius:999px;background:var(--wash-2);margin:0 auto}
+  .seg,#filterBox,.area,#teamSearch,.foot,#teamHint{margin-left:6px;margin-right:6px}
+  .teams li button{padding:8px 10px}
   body.sheet-open .board{display:none}
   .sheet{top:auto;bottom:0;left:0;right:0;width:auto;max-height:82%;border-radius:26px 26px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom,0px));padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));gap:20px}
   .cta{bottom:calc(18px + env(safe-area-inset-bottom,0px))}

@@ -1,0 +1,35 @@
+rules_version = '2';
+
+// pins/{uid}: one pin per account (the doc id IS the uid). Public read: a pin holds only
+// team + already-blurred coordinates + precision + server time. No name, no email, ever.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function validPin(d) {
+      return d.keys().hasOnly(['t', 'lat', 'lng', 'p', 'ts'])
+        && d.keys().hasAll(['t', 'lat', 'lng', 'p', 'ts'])
+        && d.t is string && d.t.size() > 0 && d.t.size() <= 40
+        && d.lat is number && d.lat >= -85 && d.lat <= 85
+        && d.lng is number && d.lng >= -180 && d.lng <= 180
+        && d.p in ['area', 'city', 'exact']
+        && d.ts == request.time;
+    }
+
+    match /pins/{uid} {
+      allow read: if true;
+      allow create: if signedIn() && request.auth.uid == uid && validPin(request.resource.data);
+      // at most one change every 30 s per account
+      allow update: if signedIn() && request.auth.uid == uid && validPin(request.resource.data)
+        && request.time > resource.data.ts + duration.value(30, 's');
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

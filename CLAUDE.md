@@ -22,12 +22,15 @@ Anonim szurkolói világtérkép. Bárki bejelöli, hol él vagy tartózkodik, �
 - MapLibre GL JS v6 + OpenFreeMap (`positron` / `dark`), globe nézet. A stílust a `web/src/basemap.js` tölti be, átszínezi a tokenekre, és a feliratokat `name:<nyelv>` mezőre állítja.
 - **Pinek nézet:**
   - minden csapat: egy klaszterforrás, `clusterProperties` a top 40 csapat darabszámával → HTML-markeres fánkdiagram (összlétszám középen);
-  - egy csapatra szűrve: külön klaszterforrás a csapat színével, számozott gömbök, zoomra szétválnak.
+  - csapatszűrő (max. 5, `MAX_TEAMS`): külön `sel` klaszterforrás a kiválasztott csapatok darabszámával → ugyanolyan fánk, csak azokkal a színekkel.
+- Csapatlista: top 10, „Összes csapat” gomb, kereső (aliasokkal); a számok a kiválasztott területre vonatkoznak.
+- Területszűrő: Világ / Ország / Város (Photon-keresés → Nominatim-körvonal, választásonként egy kérés, `web/src/area.js`) / Sugár (letett, húzható középpont + 1–200 km). Minden statisztika és réteg a `scoped()` pontokból dolgozik.
+- Mobilon a felső panel alapból összecsukott; a fogantyúval vagy fel-le húzással nyitható/zárható (`tm.board`).
 - **Heatmap nézet** (zoomfüggő súly, hogy kizoomolva ne égjen ki).
-- Bejelölés: csapat (combobox) → hely (térképkattintás / húzható jelölő / városlista) → pontosság → mentés.
+- Bejelölés: csapat (combobox) → hely (térképkattintás / húzható jelölő / városkereső + opcionális utca-házszám, Photon) → pontosság → mentés → belépés, ha még nincs.
 - Világos/sötét mód: alapból `prefers-color-scheme`, a választás `localStorage`-ban (`tm.theme`). Nyelv: `?lang=` → `tm.lang` → böngésző → `en`.
 - 24 000 generált, seedelt demó szurkoló (`makeDemo`, a `web/src/data/cities.js` súlyai alapján), kapcsolható.
-- **Nincs még backend:** a saját pin csak `localStorage`-ban él (`tm.mypin`). Az F1-ben jön a Cloud Run API + Firestore + Firebase Auth.
+- **Backend (F1, számlázás nélküli változat):** Firebase Auth (Google + e-mail link) + Firestore `pins/{uid}` (`web/src/firebase.js`, lustán betöltve). Írni csak ellenőrzött e-mailes, saját uid-re lehet; mezővalidálás és 30 mp-es rate limit a `firestore.rules`-ban. Belépés előtt csak az elmosott piszkozat várakozik (`tm.draft`). Az olvasás egyelőre közvetlen `onSnapshot`; ha lesz számlázás, a Cloud Run + CDN-cache váltja (docs/terv.md).
 - **Mérés:** minden esemény a `track()`-en át megy (`web/src/analytics.js`) → `dataLayer` → GTM (`VITE_GTM_ID`). Consent Mode v2, az analitika hozzájárulásig tiltva. A `track()` kiszűri a koordinátát, az uid-et és az e-mailt; ezt ne kerüld meg. A bejelölő panel `data-clarity-mask`.
 
 ## Fájlok és build
