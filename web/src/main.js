@@ -350,6 +350,7 @@ function setBoard(open, persist) {
 }
 setBoard(!phone.matches || (() => { try { return localStorage.getItem("tm.board") === "1"; } catch (_) { return false; } })(), false);
 grab.onclick = () => setBoard(board.classList.contains("collapsed"), true);
+$("#boardClose").onclick = () => setBoard(false, true);
 let swipeY = null;
 board.addEventListener("touchstart", e => { swipeY = phone.matches && !e.target.closest(".board-body") || e.target.closest(".grab") ? e.touches[0].clientY : null; }, { passive: true });
 board.addEventListener("touchend", e => {
@@ -359,6 +360,7 @@ board.addEventListener("touchend", e => {
 function setView(v) {
   view = v;
   for (const [id, k] of [["#vPins", "pins"], ["#vHeat", "heat"], ["#vTribes", "tribes"]]) $(id).setAttribute("aria-pressed", String(v === k));
+  document.body.classList.toggle("view-tribes", v === "tribes"); updateCta();
   tribes?.setVisible(v === "tribes"); applyVisibility(); track("view_change", { view: v });
 }
 $("#vPins").onclick = () => setView("pins"); $("#vHeat").onclick = () => setView("heat"); $("#vTribes").onclick = () => setView("tribes");
@@ -392,8 +394,9 @@ function openSheet(edit = false) {
   sheet.hidden = false; document.body.classList.add("sheet-open"); closeAccount();
 }
 function showMyPin() { if (!myPin) return; closeAccount(); map.flyTo({ center: [myPin.lng, myPin.lat], zoom: Math.max(map.getZoom(), 13), duration: 1200 }); track("my_pin_show"); }
-function updateCta() { relabel($("#openSheet"), myPin ? "myPin" : "cta"); }
-$("#openSheet").onclick = () => { if (myPin) { showMyPin(); return; } openSheet(); $("#teamInput").focus(); track("pin_flow_start"); };
+// the bottom button: in the tribes view it founds a tribe, elsewhere it is "put me on the map" / "my pin"
+function updateCta() { relabel($("#openSheet"), view === "tribes" ? "newTribe" : myPin ? "myPin" : "cta"); }
+$("#openSheet").onclick = () => { if (view === "tribes") { tribes?.create(); return; } if (myPin) { showMyPin(); return; } openSheet(); $("#teamInput").focus(); track("pin_flow_start"); };
 $("#closeSheet").onclick = () => { sheet.hidden = true; document.body.classList.toggle("sheet-open", !!tribes?.isOpen()); stopPick(); track("pin_flow_close", { team_chosen: !!chosenTeam, place_chosen: !!pickLL }); };
 /* place: city search, then an optional street + number inside that city. Query text never goes to analytics. */
 let pickedCity = null;

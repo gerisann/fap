@@ -30,6 +30,7 @@ export default {
   viewTribes: "Tribe-ok",
   tribe: "Tribe",
   newTribe: "Új tribe",
+  tribeSearch: "Tribe keresése…",
   newTribeSub: "A csapatod közössége a városodban",
   createTribe: "Létrehozom",
   join: "Csatlakozom",

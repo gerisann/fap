@@ -74,9 +74,13 @@ export function initTribes(ctx) {
   const band = z => z < TRIBE_ZOOM ? 0 : z < TRIBE_ZOOM_FULL ? 1 : 2;
   let zoomBand = null;
   map.on("zoomend", () => { if (visible && band(map.getZoom()) !== zoomBand) render(); });
+  // the tribe search: accent-insensitive, over name, team, city and district
+  const fold = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  let tribeQuery = "";
+  const matches = tr => !tribeQuery || fold([tr.name, tr.team, tr.city, tr.district].filter(Boolean).join(" ")).includes(tribeQuery);
   function shown() {
     const sel = ctx.selected();
-    return tribes.filter(tr => tr.memberCount > 0 && ctx.inScope(tr.lng, tr.lat) && (!sel.length || sel.includes(tr.team)));
+    return tribes.filter(tr => tr.memberCount > 0 && ctx.inScope(tr.lng, tr.lat) && (!sel.length || sel.includes(tr.team)) && matches(tr));
   }
   function render() {
     for (const mk of markers.values()) mk.remove(); markers = new Map();
@@ -339,7 +343,7 @@ export function initTribes(ctx) {
     districtCombo.clear(); pickedDistrict = null; districtField.disabled = true;
     track("tribe_create_start");
   }
-  $("#newTribeBtn").onclick = startCreate;
+  $("#tribeSearch").addEventListener("input", e => { tribeQuery = fold(e.target.value.trim()); render(); });
   $("#tcSave").onclick = async function create() {
     const pin = ctx.myPin(); if (!pin || !pickedCity?.osm) return;
     const name = $("#tcName").value.trim().replace(/\s+/g, " ");
@@ -462,6 +466,6 @@ export function initTribes(ctx) {
 
   return {
     setBackend, onUser, render, setVisible, isOpen: () => !sheet.hidden, close: closeSheet, setProfile: p => { profile = p; },
-    get: id => tribes.find(x => x.id === id), guestIds, open: id => openTribe(id, "account"), row: tr => tribeRow(tr, "account"),
+    get: id => tribes.find(x => x.id === id), guestIds, create: () => startCreate(), open: id => openTribe(id, "account"), row: tr => tribeRow(tr, "account"),
   };
 }

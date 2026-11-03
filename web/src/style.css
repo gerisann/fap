@@ -20,12 +20,14 @@
 :root[data-theme="dark"]{--ink:#eceef1;--paper:#1b1d21;--cobalt:#6680ff;--mute:#7c828b;--space:#0b0c0e;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 16px 48px -12px rgba(0,0,0,.6);--ctrl-filter:invert(.88) hue-rotate(180deg);color-scheme:dark;}
 html,body{height:100%}
-body{margin:0;background:var(--wash);color:var(--ink);font-family:var(--f-body);font-size:14px;overflow:hidden;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--space);color:var(--ink);font-family:var(--f-body);font-size:14px;overflow:hidden;-webkit-font-smoothing:antialiased}
 [hidden]{display:none!important}
 button,input,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--cobalt);outline-offset:2px}
 #map{position:fixed;inset:0;z-index:0;isolation:isolate;background:var(--space)}
+/* installed on iOS the small viewport stops above the home indicator: the map reaches the large one */
+@supports (height:100lvh){#map{bottom:auto;height:100lvh}}
 
 /* map chrome */
 .maplibregl-ctrl-group{filter:var(--ctrl-filter);border-radius:var(--r-sm)!important;box-shadow:var(--shadow)!important;overflow:hidden}
@@ -152,7 +154,6 @@ body.sheet-open .cta{display:none}
 /* tribes */
 .seg3{grid-template-columns:repeat(3,1fr)}
 .tribes-box{display:flex;flex-direction:column;gap:10px;margin:0 8px}
-.newtribe{padding:11px 16px;border-radius:999px;align-self:flex-start}
 .tribe-mk{display:flex;align-items:center;gap:10px;border:0;background:var(--paper);color:var(--ink);border-radius:var(--r-md);padding:9px 14px 9px 11px;box-shadow:var(--shadow);font:500 12px/1.2 var(--f-body);cursor:pointer;white-space:nowrap;text-align:left;transition:transform .15s}
 .tribe-mk:hover{transform:translateY(-2px)}
 .tribe-mk .dot{width:12px;height:12px;flex:none}
@@ -311,6 +312,11 @@ a.privacy{text-decoration:none}
 .consent a{color:var(--cobalt);font-weight:600}
 .acct-btn{display:none;border:0;background:none;padding:0}
 .acct-btn .avatar{width:32px;height:32px;font-size:13px}
+.head-btns{display:flex;align-items:center;gap:8px}
+/* phones, board open: a close button the size of the avatar folds it */
+.board-close{display:none;width:32px;height:32px;border:0;border-radius:50%;background:var(--wash);color:var(--mute);font-size:13px;place-items:center;padding:0}
+/* the tribes view lists tribes, not teams (picked-team chips stay: they filter tribes too) */
+body.view-tribes #teamSearch,body.view-tribes #teamList,body.view-tribes #moreTeams,body.view-tribes #teamHint{display:none}
 .privacy{border:0;background:transparent;color:var(--mute);font-size:12px;padding:0}
 
 /* consent */
@@ -371,6 +377,7 @@ a.privacy{text-decoration:none}
   .stats b{font-size:19px}
   /* collapsible top panel: tap the grip or swipe up / down */
   .board-body{padding:14px 10px 4px;gap:12px;max-height:min(58vh,560px);transition:max-height .28s ease,opacity .2s ease,padding .28s ease}
+  .board:not(.collapsed) .board-close{display:grid}
   .board.collapsed .board-body{max-height:0;opacity:0;padding-top:0;padding-bottom:0;overflow:hidden}
   .grab{display:block;width:100%;border:0;background:transparent;padding:8px 0 10px;cursor:grab;touch-action:none}
   .grab span{display:block;width:40px;height:5px;border-radius:999px;background:var(--wash-2);margin:0 auto}

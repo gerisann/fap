@@ -30,6 +30,7 @@ export default {
   viewTribes: "Tribes",
   tribe: "Tribe",
   newTribe: "New tribe",
+  tribeSearch: "Search tribes…",
   newTribeSub: "Your team's crew in your city",
   createTribe: "Create",
   join: "Join",

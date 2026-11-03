@@ -35,7 +35,10 @@
 <section class="board" aria-label="TribeMap">
   <header class="board-head">
     <div class="logo">tribemap<i>.</i></div>
-    <button class="acct-btn" id="acctBtn" data-i18n-attr="aria-label:account"><span class="avatar anon" id="acctBtnAvatar">?</span></button>
+    <div class="head-btns">
+      <button class="acct-btn" id="acctBtn" data-i18n-attr="aria-label:account"><span class="avatar anon" id="acctBtnAvatar">?</span></button>
+      <button class="board-close" id="boardClose" data-i18n-attr="aria-label:panelToggle">✕</button>
+    </div>
   </header>
   <div class="stats">
     <div><b id="sFans">–</b><span data-i18n="fans"></span></div>
@@ -48,7 +51,7 @@
       <button id="vTribes" aria-pressed="false" data-i18n="viewTribes"></button>
     </div>
     <div class="tribes-box" id="tribesBox" hidden>
-      <button class="chipbtn newtribe" id="newTribeBtn" data-i18n="newTribe"></button>
+      <input class="field sm" id="tribeSearch" type="search" autocomplete="off" data-i18n-attr="placeholder:tribeSearch;aria-label:tribeSearch">
       <ul class="teams" id="tribeList"></ul>
     </div>
     <div class="area">

@@ -30,6 +30,7 @@ export default {
   viewTribes: "Tribus",
   tribe: "Tribu",
   newTribe: "Nueva tribu",
+  tribeSearch: "Buscar tribus…",
   newTribeSub: "La peña de tu equipo en tu ciudad",
   createTribe: "Crear",
   join: "Unirme",
