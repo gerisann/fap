@@ -167,9 +167,10 @@ export function initTribes(ctx) {
 
   /* username + community rules, asked once before the first join / create (the name may already exist from the account block) */
   function needProfile(then) {
-    if (validUsername(profile?.nick) && profile?.rulesAt) return false;
+    if (validUsername(profile?.nick) && profile?.rulesAt && !profile?.nameHidden) return false;
     afterNick = then; $("#tsNick").hidden = false;
-    const inp = $("#nickInput"); if (validUsername(profile?.nick)) inp.value = profile.nick; inp.focus();
+    const inp = $("#nickInput"); if (validUsername(profile?.nick) && !profile?.nameHidden) inp.value = profile.nick; inp.focus();
+    if (profile?.nameHidden) status(t("nameHiddenYou"), true);
     return true;
   }
   $("#tsNick").onsubmit = async e => {
@@ -179,7 +180,7 @@ export function initTribes(ctx) {
     if (!$("#rulesOk").checked) { status(t("rulesNeeded"), true); return; }
     try {
       await ctx.backend().claimUsername(nick, profile?.nick, true);
-      profile = { ...profile, nick, rulesAt: Date.now() }; ctx.onProfile?.(profile);
+      profile = { ...profile, nick, rulesAt: Date.now(), nameHidden: false }; ctx.onProfile?.(profile);
       $("#tsNick").hidden = true; status(""); track("nick_set"); const f = afterNick; afterNick = null; f?.();
     } catch (err) { status(t(err.code === "taken" ? "nickTaken" : "saveFailed"), true); }
   };
@@ -272,7 +273,8 @@ export function initTribes(ctx) {
     const wrap = document.createElement("div"); wrap.className = kind;
     const hiddenForAll = item.hidden || (kind === "post" && item.reportCount >= 3);
     const meta = document.createElement("div"); meta.className = "meta";
-    const nb = document.createElement("b"); nb.textContent = item.nick; meta.append(nb, document.createTextNode(" · " + ago(tsMs(item.createdAt))));
+    const nb = document.createElement("b"); nb.textContent = item.nick; nameLabel(nb, item);
+    meta.append(nb, document.createTextNode(" · " + ago(tsMs(item.createdAt))));
     const body = document.createElement("p");
     if (hiddenForAll && !isCaptain() && item.authorUid !== me) { body.className = "muted"; body.textContent = t("hiddenPost"); wrap.append(meta, body); return wrap; }
     body.textContent = item.text; if (hiddenForAll) body.classList.add("dim");
@@ -280,6 +282,7 @@ export function initTribes(ctx) {
     const btn = (key, fn, vars) => { const b = document.createElement("button"); b.type = "button"; b.className = "textbtn"; b.textContent = t(key, vars); b.onclick = fn; acts.append(b); return b; };
     if (kind === "post") btn("replies", () => toggleReplies(item, wrap), { n: num(item.replyCount || 0) });
     if (me && item.authorUid !== me && kind === "post") btn("report", () => report(item));
+    if (me && item.authorUid !== me) btn("reportName", () => reportName(item));
     if (isCaptain() && kind === "post") btn(item.hidden ? "unhide" : "hide", () => hide(item));
     if (me && item.authorUid === me) btn("delete", () => remove(item, kind, pid));
     wrap.append(meta, body, acts);
@@ -323,6 +326,21 @@ export function initTribes(ctx) {
     if (isProfane(text)) { status(t("profane"), true); track("post_blocked"); return; }
     try { await ctx.backend().createReply(open.id, p.id, member.nick, text); input.value = ""; track("reply_create", { team: open.team }); }
     catch (err) { if (import.meta.env.DEV) console.warn("reply", err); status(t(tooFast(err) ? "postTooFast" : "saveFailed"), true); }
+  }
+  /* names hidden by 3 reports show as "Fan#ABCD" (stable per author); looked up once per name and cached */
+  const hiddenNames = new Map(); // lowercase nick -> boolean
+  const hiddenLabel = item => t("hiddenName", { tag: String(item.authorUid || "").slice(0, 4).toUpperCase() });
+  function nameLabel(el, item) {
+    const k = String(item.nick || "").toLowerCase();
+    if (hiddenNames.get(k)) { el.textContent = hiddenLabel(item); return; }
+    if (hiddenNames.has(k) || !ctx.backend()) return;
+    hiddenNames.set(k, false);
+    ctx.backend().nameHidden(item.nick).then(h => { hiddenNames.set(k, h); if (h && el.isConnected) el.textContent = hiddenLabel(item); });
+  }
+  async function reportName(item) {
+    if (!confirm(t("reportNameConfirm"))) return;
+    try { await ctx.backend().reportName(item.nick); hiddenNames.delete(item.nick.toLowerCase()); status(t("nameReported")); track("name_report"); }
+    catch (e) { status(t(e.code === "permission-denied" ? "alreadyReported" : "saveFailed")); }
   }
   async function report(p) {
     if (!confirm(t("reportConfirm"))) return;

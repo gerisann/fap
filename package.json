@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "vite build && firebase deploy --only hosting:app",
+    "sync:profanity": "node scripts/sync-profanity.mjs",
     "emulators": "firebase emulators:start --only auth,firestore --project tribemap-app",
     "test:rules": "firebase emulators:exec --only firestore --project demo-tribemap \"node --test tests/rules.test.js\""
   },

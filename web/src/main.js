@@ -9,6 +9,7 @@ import { searchCities, searchAddress, searchAreas } from "./geocode.js";
 import { placeGeometry, circle, distKm, bbox, contains } from "./area.js";
 import { initTribes, validUsername, usernameProblem } from "./tribes.js";
 import { isProfane } from "./profanity.js";
+import { todaysMatches, cheerOpen } from "./fixtures.js";
 import { asyncCombo } from "./combo.js";
 import { t, num, lang, locale, applyDom, setLang, onLangChange } from "./i18n.js";
 import { track, initAnalytics, consent, setConsent } from "./analytics.js";
@@ -30,6 +31,7 @@ const MAX_TEAMS = 5;
 let view = "pins", selected = [], showDemo = true;
 let area = null;                 // { level, name, geom, test(lng, lat) }; null = whole world
 let tribes = null;               // tribe layer + sheet (tribes.js), set up after the board
+let cheersFC = { type: "FeatureCollection", features: [] }; // match-day cheer dots (kept across style reloads)
 let real = new Map();            // uid -> pin from the shared store
 let user = null, myPin = null, backend = null, loginMethod = null, profile = null, stats = null, unsubStats = null;
 const DRAFT = "tm.draft";        // blurred pin waiting for sign-in; never the raw location
@@ -207,6 +209,10 @@ function setupLayers() {
   map.addSource("area", { type: "geojson", data: areaFC() });
   map.addLayer({ id: "area-fill", type: "fill", source: "area", paint: { "fill-color": P().accent, "fill-opacity": .06 } });
   map.addLayer({ id: "area-line", type: "line", source: "area", paint: { "line-color": P().accent, "line-width": 1.6, "line-opacity": .8 } });
+  // match-day cheers: a soft glow + a dot per cheering fan, in their side's colour
+  map.addSource("cheers", { type: "geojson", data: cheersFC });
+  map.addLayer({ id: "cheers-glow", type: "circle", source: "cheers", paint: { "circle-color": ["get", "c"], "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 6, 8, 18], "circle-blur": 1, "circle-opacity": .45 } });
+  map.addLayer({ id: "cheers-dot", type: "circle", source: "cheers", paint: { "circle-color": ["get", "c"], "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 2.5, 8, 5], "circle-stroke-color": "#fff", "circle-stroke-width": 1 } });
   map.addSource("heat", { type: "geojson", data: fc([]) });
   map.addLayer({ id: "heatL", type: "heatmap", source: "heat", layout: { visibility: "none" }, paint: {
     "heatmap-weight": ["interpolate", ["linear"], ["zoom"], 1, .01, 5, .04, 9, .2, 13, 1],
@@ -441,7 +447,7 @@ function showMine(p) {
   // the marker element gets MapLibre's positioning transform, so the drop animation lives on the inner .me-pin
   const el = document.createElement("div"), pinEl = document.createElement("div"); pinEl.className = "me-pin"; pinEl.title = t("you", { team: p.t });
   pinEl.innerHTML = `<svg viewBox="0 0 32 42" aria-hidden="true"><path d="M16 41s14-13.2 14-24.5a14 14 0 0 0-28 0C2 27.8 16 41 16 41z" fill="${colorOf(p.t)}" stroke="#fff" stroke-width="2.5"/><circle cx="16" cy="16.5" r="6" fill="#fff"/></svg>`;
-  const tag = document.createElement("span"); tag.textContent = profile?.nick && validUsername(profile.nick) ? "@" + profile.nick : t("me"); pinEl.append(tag);
+  const tag = document.createElement("span"); tag.textContent = profile?.nick && validUsername(profile.nick) && !profile.nameHidden ? "@" + profile.nick : t("me"); pinEl.append(tag);
   el.append(pinEl);
   el.addEventListener("click", ev => {
     ev.stopPropagation();
@@ -460,8 +466,58 @@ function updateMine() {
   showMine(myPin);
   if (!myPin) editing = false;
   $("#myRow").hidden = !(editing && myPin);
-  renderAccount(); updateCta();
+  renderAccount(); updateCta(); refreshMatch();
 }
+
+/* ---------- match day: my pin's team plays today → cheer all day until the final whistle ---------- */
+let matchFx = null, unsubMatch = null, cheersShown = false;
+const hhmm = ms => new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" }).format(ms);
+async function refreshMatch() {
+  const bar = $("#matchBar");
+  const fx = myPin && backend ? (await todaysMatches(myPin.t).catch(() => [])).find(cheerOpen) : null;
+  if (!fx) { bar.hidden = true; unsubMatch?.(); unsubMatch = null; matchFx = null; return; }
+  if (matchFx?.id !== fx.id) {
+    matchFx = fx; unsubMatch?.(); unsubMatch = backend.watchMatch(fx.id, paintCounts);
+    backend.hasCheered(fx.id).then(setCheerBtn).catch(() => setCheerBtn(false));
+    track("matchday_show", { team: myPin.t });
+  }
+  matchFx = { ...matchFx, ...fx }; paintMatch(); bar.hidden = false;
+}
+const sideColor = side => side === matchFx.side ? colorOf(myPin.t) : colorOf(side === "h" ? matchFx.home : matchFx.away);
+function paintMatch() {
+  const fx = matchFx;
+  $("#mbHome").textContent = fx.home; $("#mbAway").textContent = fx.away;
+  $("#mbHDot").style.background = $("#mbBarH").style.background = sideColor("h");
+  $("#mbADot").style.background = $("#mbBarA").style.background = sideColor("a");
+  $("#mbInfo").textContent = (Date.now() < fx.kickoff ? t("kickoffAt", { time: hhmm(fx.kickoff) }) : t("matchLive")) + " · " + fx.league;
+}
+function paintCounts(m) {
+  const h = m.h || 0, a = m.a || 0;
+  $("#mbCountH").textContent = t("cheersN", { n: num(h) }); $("#mbCountA").textContent = t("cheersN", { n: num(a) });
+  $("#mbBarH").style.flexGrow = h + a ? h : 1; $("#mbBarA").style.flexGrow = h + a ? a : 1;
+}
+function setCheerBtn(done) { const b = $("#mbCheer"); relabel(b, done ? "cheered" : "cheer"); b.disabled = done; b.classList.toggle("done", done); }
+$("#mbCheer").onclick = async () => {
+  if (!matchFx || !backend || !myPin) return;
+  $("#mbCheer").disabled = true;
+  try {
+    const r = await backend.cheer(matchFx, myPin);
+    setCheerBtn(true); $("#mbInfo").textContent = t("cheerThanks") + (r.xp ? " +25 XP" : "");
+    track("cheer", { team: myPin.t, on: r.xp }); if (cheersShown) loadCheerLayer();
+  } catch (e) { $("#mbCheer").disabled = false; $("#mbInfo").textContent = t("saveFailed"); track("cheer_error", { code: e.code || "unknown" }); }
+};
+async function loadCheerLayer() {
+  const list = await backend.loadCheers(matchFx.id).catch(() => []);
+  cheersFC = { type: "FeatureCollection", features: list.map(c => ({ type: "Feature", properties: { c: sideColor(c.side) }, geometry: { type: "Point", coordinates: [c.lng, c.lat] } })) };
+  map.getSource("cheers")?.setData(cheersFC);
+}
+$("#mbMap").onclick = async () => {
+  cheersShown = !cheersShown; relabel($("#mbMap"), cheersShown ? "hideCheers" : "showCheers");
+  if (cheersShown) { await loadCheerLayer(); map.flyTo({ center: [myPin.lng, myPin.lat], zoom: 3, duration: 1200 }); }
+  else { cheersFC = { type: "FeatureCollection", features: [] }; map.getSource("cheers")?.setData(cheersFC); }
+  track("cheer_map", { on: cheersShown });
+};
+setInterval(() => { if (myPin) refreshMatch(); }, 5 * 60 * 1000);
 
 /* ---------- account block: who I am, my pin, language, theme ---------- */
 const account = $("#account");
@@ -511,7 +567,7 @@ $("#unameForm").onsubmit = async e => {
   if (bad) { acctStatus(t(bad), true); return; }
   try {
     await backend.claimUsername(nick, profile?.nick, false);
-    profile = { ...profile, nick }; tribes?.setProfile(profile);
+    profile = { ...profile, nick, nameHidden: false }; tribes?.setProfile(profile);
     $("#unameForm").hidden = true; acctStatus(t("usernameSaved")); renderAccount(); showMine(myPin); track("username_set");
   } catch (err) { acctStatus(t(err.code === "taken" ? "nickTaken" : "saveFailed"), true); track("username_error", { code: err.code || "unknown" }); }
 };
@@ -590,7 +646,16 @@ import("./firebase.js").then(async fb => {
   fb.onUser(async u => {
     user = u; profile = null;
     tribes.onUser(u);
-    if (u) fb.getProfile().then(p => { profile = p; renderAccount(); showMine(myPin); }).catch(() => {});
+    if (u) fb.getProfile().then(async p => {
+      profile = p;
+      // a name hidden by reports must be changed before posting again
+      if (p?.nick && await fb.nameHidden(p.nick)) {
+        profile = { ...p, nameHidden: true }; tribes.setProfile(profile);
+        acctStatus(t("nameHiddenYou"), true); openUnameForm(); if (phone.matches) document.body.classList.add("acct-open");
+        track("name_hidden_notice");
+      }
+      renderAccount(); showMine(myPin);
+    }).catch(() => {});
     unsubStats?.(); unsubStats = null; stats = null;
     if (u) {
       unsubStats = fb.watchStats(s => { stats = s; renderAccount(); });

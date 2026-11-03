@@ -7,7 +7,7 @@ import {
 } from "firebase/auth";
 import {
   getFirestore, connectFirestoreEmulator, collection, doc, onSnapshot, setDoc, getDoc, deleteDoc, updateDoc, serverTimestamp,
-  writeBatch, increment, query, orderBy, limit, arrayUnion, arrayRemove, deleteField, FieldPath,
+  writeBatch, increment, query, orderBy, limit, arrayUnion, arrayRemove, deleteField, FieldPath, getDocs, where,
 } from "firebase/firestore";
 
 const app = initializeApp({
@@ -92,11 +92,46 @@ export async function claimUsername(nick, oldNick, acceptRules) {
   if (!taken.exists()) b.set(doc(db, "usernames", lower), { uid: me });
   const oldLower = oldNick?.toLowerCase();
   if (oldLower && oldLower !== lower) {
+    // a name hidden by reports stays reserved (the rules refuse to release it)
     const old = await getDoc(doc(db, "usernames", oldLower));
-    if (old.exists() && old.data().uid === me) b.delete(doc(db, "usernames", oldLower));
+    if (old.exists() && old.data().uid === me && (old.data().reports || 0) < 3) b.delete(doc(db, "usernames", oldLower));
   }
   b.set(doc(db, "users", me), acceptRules ? { nick, rulesAt: serverTimestamp() } : { nick }, { merge: true });
+  // my member docs follow the new name, so I can keep posting in my tribes
+  const s = await readStats();
+  for (const tid of s?.current || []) b.update(doc(db, "tribes", tid, "members", me), { nick });
   await b.commit();
+  nameFlags.delete(lower);
+}
+
+/* match day: one cheer per account per match, counter of my side +1, +25 XP the first cheer of the (UTC) day */
+export async function cheer(fx, pin) {
+  const me = uid(), cid = fx.id + "_" + me, b = writeBatch(db);
+  b.set(doc(db, "cheers", cid), { f: fx.id, side: fx.side, team: pin.t, lat: pin.lat, lng: pin.lng, ts: serverTimestamp() });
+  b.set(doc(db, "matches", String(fx.id)), { [fx.side]: increment(1) }, { merge: true });
+  const s = await readStats();
+  const xp = !!s && utcDay(s.lastCheerAt?.toMillis?.() || 0) < utcDay(Date.now());
+  if (xp) b.update(statsRef(me), { xp: increment(25), lastCheerAt: serverTimestamp(), lastCheer: cid });
+  await b.commit();
+  return { xp };
+}
+export const hasCheered = async f => (await getDoc(doc(db, "cheers", f + "_" + uid()))).exists();
+export const watchMatch = (f, cb) => onSnapshot(doc(db, "matches", String(f)), s => cb(s.exists() ? s.data() : {}), () => cb({}));
+export const loadCheers = async f => (await getDocs(query(collection(db, "cheers"), where("f", "==", f), limit(3000)))).docs.map(d => d.data());
+
+/* name reports: one per reporter per name; at 3 the name is hidden everywhere and must be changed */
+const nameFlags = new Map(); // lowercase nick -> Promise<boolean hidden>
+export function nameHidden(nick) {
+  const k = String(nick || "").toLowerCase();
+  if (!nameFlags.has(k)) nameFlags.set(k, getDoc(doc(db, "usernames", k)).then(s => s.exists() && (s.data().reports || 0) >= 3).catch(() => false));
+  return nameFlags.get(k);
+}
+export async function reportName(nick) {
+  const k = nick.toLowerCase(), b = writeBatch(db);
+  b.set(doc(db, "usernames", k, "reports", uid()), { createdAt: serverTimestamp() });
+  b.update(doc(db, "usernames", k), { reports: increment(1) });
+  await b.commit();
+  nameFlags.delete(k);
 }
 
 // "I'm here now": city-level (0.05° grid), private, valid 72 h for joining nearby tribes

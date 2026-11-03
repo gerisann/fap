@@ -131,6 +131,19 @@
   </div>
 </section>
 
+<!-- match day: my team plays today → cheer all day until the final whistle, live split vs the opponent -->
+<section class="matchbar" id="matchBar" hidden data-i18n-attr="aria-label:matchday">
+  <div class="mb-top"><span class="mb-tag" data-i18n="matchday"></span><span id="mbInfo"></span></div>
+  <div class="mb-teams">
+    <span class="mb-side"><i class="dot" id="mbHDot"></i><b id="mbHome"></b></span>
+    <span class="mb-vs">–</span>
+    <span class="mb-side mb-away"><b id="mbAway"></b><i class="dot" id="mbADot"></i></span>
+  </div>
+  <div class="mb-bar"><i id="mbBarH"></i><i id="mbBarA"></i></div>
+  <div class="mb-counts"><span id="mbCountH"></span><span id="mbCountA"></span></div>
+  <div class="mb-actions"><button class="save sm" id="mbCheer" data-i18n="cheer"></button><button class="textbtn" id="mbMap" data-i18n="showCheers"></button></div>
+</section>
+
 <button class="cta" id="openSheet" data-i18n="cta"></button>
 
 <!-- data-clarity-mask: session recordings must never show where someone places their pin -->

@@ -1,0 +1,38 @@
+name: Fixtures snapshot
+
+# Twice a day: today + tomorrow from API-Football (2 requests per run, free plan allows 100/day).
+# The JSON lands in data/fixtures/ and is served by GitHub Pages to https://tribemap.web.app.
+on:
+  schedule:
+    - cron: "10 3 * * *"
+    - cron: "10 15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fixtures
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fetch fixtures
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: node scripts/fetch-fixtures.mjs
+      - name: Commit if changed
+        run: |
+          git config user.name "tribemap-bot"
+          git config user.email "tribemap-bot@users.noreply.github.com"
+          git add data/fixtures
+          if git diff --cached --quiet; then echo "no change"; exit 0; fi
+          git commit -m "Fixtures snapshot $(date -u +%F)"
+          git push

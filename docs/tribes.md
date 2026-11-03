@@ -27,6 +27,24 @@ A tribe-on belül hírfolyam van: kérdések, meccsnézések, kocsmaajánlók.
   kapcsolattartási pont is.
 - Korhatár: **16+** (GDPR, Magyarország).
 
+## Meccsnap – „Szurkolok!” (következő lépés)
+
+Mért és eldöntött (2026-11-03):
+- **Forrás: API-Football, ingyenes csomag.** A `GET /fixtures?date=YYYY-MM-DD` **egy hívással az adott nap
+  összes meccsét** adja, lapozás nélkül: élesben mérve kedden 221 meccs / 71 bajnokság / 41 ország,
+  szerdán 246 / 93 / 63, `paging.total = 1`, kb. 200 KB. Az NB II, a Championship és a Serie D is benne van.
+- **Korlát:** az ingyenes csomag csak a tegnap–ma–holnap dátumokat engedi, és napi 100 kérést ad. Nekünk
+  napi 2 kérés kell (ma + holnap).
+- **Szurkolni a meccs napján egész nap lehet, a meccs végéig** (nem csak a meccs ideje alatt).
+- A gólhullám későbbre halasztva.
+- Az API-kulcs nem kerülhet a kliensbe. Egy ütemezett szerveroldali job kéri le az adatot, és
+  statikus JSON-t tesz ki. A tervezett megoldás GitHub Actions, ami ingyenes és nem kell hozzá
+  Google-számlázás. A kulcsot a felhasználó GitHub-secretként adja meg.
+- Nyitott kérdés: a +25 XP-t a szabályok csak akkor tudják ellenőrizni, ha a meccsadat a Firestore-ban
+  is megvan (ehhez a jobnak szolgáltatásfiók kell). Enélkül a jóváírás napi egyszeri limittel működik.
+- A csapatnevek eltérnek (pl. „Ferencvarosi TC” ↔ „Ferencváros”), ezért névegyeztetés és kézi
+  alias-tábla kell.
+
 ## Funkciók
 
 | Elem | Leírás |

@@ -185,6 +185,64 @@ test("tribe name: optional, clean, 3+ chars", async () => {
   await assertSucceeds(createTribe("alice", "Arsenal", BUD, "Fan_alice", tidOf("Arsenal"), { name: "Budapesti Ágyúsok" }));
 });
 
+test("profanity in rules: leet, accents, whole words vs everyday words", async () => {
+  await pin("alice", "Ferencváros"); await nick("alice"); await createTribe("alice", "Ferencváros");
+  const tid = tidOf("Ferencváros");
+  // each refused write leaves the rate-limit stamp untouched, so they can follow each other
+  for (const [i, text] of ["F4SZ ez", "ez szar volt", "KÖCSÖG bíró", "Nazik a lelátón"].entries()) {
+    try { await post("alice", tid, "b" + i, text); } catch (_) { continue; }
+    throw new Error("not blocked by the rules: " + text);
+  }
+  await assertSucceeds(post("alice", tid, "ok", "Szarvasban játszunk, Nazionale meccs után, foszfor-sárga mezben"));
+});
+
+test("name reports: 3 distinct reports hide a name; it must be changed and stays reserved", async () => {
+  const tid = await seedTribeBy("alice");                    // alice's name: Fan_alice
+  const report = (u) => { const d = db(u), b = writeBatch(d);
+    b.set(doc(d, "usernames", "fan_alice", "reports", u), { createdAt: serverTimestamp() });
+    b.update(doc(d, "usernames", "fan_alice"), { reports: increment(1) });
+    return b.commit(); };
+  await assertFails(report("alice"));                         // not my own name
+  for (const u of ["r1", "r2"]) { await nick(u); await assertSucceeds(report(u)); }
+  await assertFails(report("r1"));                            // once per reporter
+  await assertFails(updateDoc(doc(db("r3"), "usernames", "fan_alice"), { reports: increment(1) })); // count without a report doc
+  await post("alice", tid, "p1");                             // still fine at 2 reports
+  await nick("r3"); await assertSucceeds(report("r3"));       // 3rd report → hidden
+  await new Promise(r => setTimeout(r, 21000));
+  await assertFails(post("alice", tid, "p2"));                // hidden name cannot post
+  // rename: new claim + profile + member doc follow; the old claim cannot be released
+  const d = db("alice"), b = writeBatch(d);
+  b.set(doc(d, "usernames", "alice_new"), { uid: "alice" });
+  b.set(doc(d, "users", "alice"), { nick: "Alice_New", rulesAt: serverTimestamp() });
+  b.update(doc(d, "tribes", tid, "members", "alice"), { nick: "Alice_New" });
+  await assertSucceeds(b.commit());
+  await assertFails(deleteDoc(doc(db("alice"), "usernames", "fan_alice")));
+  await assertSucceeds(post("alice", tid, "p3", "Újra itt!", "Alice_New"));
+  await nick("bob"); await assertFails(nick("bob", "Fan_Alice"));  // reserved for good
+});
+
+test("cheers: one per match, counter follows, +25 XP once a day, own pin only", async () => {
+  await pin("alice", "Arsenal"); await nick("alice");
+  const p = (await getDoc(doc(db("alice"), "pins", "alice"))).data();
+  const cheer = (uid, f, side, xp, team = "Arsenal", at = p) => { const d = db(uid), b = writeBatch(d);
+    b.set(doc(d, "cheers", f + "_" + uid), { f, side, team, lat: at.lat, lng: at.lng, ts: serverTimestamp() });
+    b.set(doc(d, "matches", String(f)), { [side]: increment(1) }, { merge: true });
+    if (xp) b.update(doc(d, "stats", uid), { xp: increment(25), lastCheerAt: serverTimestamp(), lastCheer: f + "_" + uid });
+    return b.commit(); };
+  await assertFails(cheer("alice", 1001, "h", true, "Chelsea"));            // not my pin team
+  await assertFails(cheer("alice", 1001, "h", true, "Arsenal", { lat: 1, lng: 1 })); // not my pin position
+  await assertSucceeds(cheer("alice", 1001, "h", true));
+  if ((await stats("alice")).xp !== 35) throw new Error("cheer xp");
+  await assertFails(cheer("alice", 1001, "h", false));                       // once per match
+  await assertFails(cheer("alice", 1002, "a", true));                         // XP once a day
+  await assertSucceeds(cheer("alice", 1002, "a", false));                     // another match the same day, no XP
+  await assertFails(updateDoc(doc(db("alice"), "matches", "1001"), { h: increment(5) })); // no free counting
+  await pin("bob", "Chelsea"); await nick("bob");
+  await assertSucceeds(cheer("bob", 1001, "a", true, "Chelsea", (await getDoc(doc(db("bob"), "pins", "bob"))).data()));
+  const m = (await getDoc(doc(db("bob"), "matches", "1001"))).data();
+  if (m.h !== 1 || m.a !== 1) throw new Error("counter " + JSON.stringify(m));
+});
+
 test("join needs accepted community rules", async () => {
   const tid = await seedTribe();
   await pin("bob", "Újpest"); await nick("bob", "Fan_bob", false);
