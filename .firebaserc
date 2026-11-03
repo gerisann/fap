@@ -1,0 +1,8 @@
+{
+  "projects": { "default": "tribemap-app" },
+  "targets": {
+    "tribemap-app": {
+      "hosting": { "app": ["tribemap"] }
+    }
+  }
+}

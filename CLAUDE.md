@@ -1,9 +1,11 @@
-# FAP – Fun Map
+# TribeMap (korábban FAP – Fun Map)
 
 Anonim szurkolói világtérkép. Bárki bejelöli, hol él vagy tartózkodik, és melyik focicsapatnak szurkol. A térképen csak a csapat látszik, név soha.
 
-- Élő oldal: https://gerisann.github.io/fap/ (GitHub Pages, `main` ág, gyökér)
-- Tulajdonos: Geri (gerisann). A felhasználói felület nyelve magyar.
+- Élő oldal: https://tribemap.web.app (Firebase Hosting, projekt: `tribemap-app`, oldal: `tribemap`)
+- A régi https://gerisann.github.io/fap/ átirányít (a gyökér `index.html` csak átirányító oldal).
+- Tulajdonos: Geri (gerisann). A felület háromnyelvű: hu / en / es.
+- Terv és ütemezés: `docs/terv.md`.
 
 ## Alapelvek (ezekhez tartsd magad)
 
@@ -17,23 +19,24 @@ Anonim szurkolói világtérkép. Bárki bejelöli, hol él vagy tartózkodik, �
 
 ## Funkciók (jelenleg)
 
-- Mapbox GL JS v3.7, `light-v11` / `dark-v11` stílus, `language: "hu"`, globe nézet.
+- MapLibre GL JS v6 + OpenFreeMap (`positron` / `dark`), globe nézet. A stílust a `web/src/basemap.js` tölti be, átszínezi a tokenekre, és a feliratokat `name:<nyelv>` mezőre állítja.
 - **Pinek nézet:**
   - minden csapat: egy klaszterforrás, `clusterProperties` a top 40 csapat darabszámával → HTML-markeres fánkdiagram (összlétszám középen);
   - egy csapatra szűrve: külön klaszterforrás a csapat színével, számozott gömbök, zoomra szétválnak.
 - **Heatmap nézet** (zoomfüggő súly, hogy kizoomolva ne égjen ki).
 - Bejelölés: csapat (combobox) → hely (térképkattintás / húzható jelölő / városlista) → pontosság → mentés.
-- Világos/sötét mód: alapból `prefers-color-scheme`, a választás `localStorage`-ban (`fap.theme`).
-- 24 000 generált, seedelt demó szurkoló (`makeDemo`, `src/cities.js` súlyai alapján), kapcsolható.
-- **Nincs még backend:** a saját pin csak `localStorage`-ban él (`fap.mypin`).
+- Világos/sötét mód: alapból `prefers-color-scheme`, a választás `localStorage`-ban (`tm.theme`). Nyelv: `?lang=` → `tm.lang` → böngésző → `en`.
+- 24 000 generált, seedelt demó szurkoló (`makeDemo`, a `web/src/data/cities.js` súlyai alapján), kapcsolható.
+- **Nincs még backend:** a saját pin csak `localStorage`-ban él (`tm.mypin`). Az F1-ben jön a Cloud Run API + Firestore + Firebase Auth.
+- **Mérés:** minden esemény a `track()`-en át megy (`web/src/analytics.js`) → `dataLayer` → GTM (`VITE_GTM_ID`). Consent Mode v2, az analitika hozzájárulásig tiltva. A `track()` kiszűri a koordinátát, az uid-et és az e-mailt; ezt ne kerüld meg. A bejelölő panel `data-clarity-mask`.
 
 ## Fájlok és build
 
-- `index.html` – **generált**, ne kézzel szerkeszd.
-- `src/src.html` – a forrás (HTML + CSS + JS egyben). Helyőrzők: `/*__TEAMS__*/`, `/*__CITIES__*/` stb.
-- `src/teams.js` – `[név, ország, szín]`. `src/cities.js` – demó városok, helyi csapatarányok, `GLOBAL` klubok.
-- `src/build.py` – `cd src && python3 build.py` → újragenerálja a `../index.html`-t (Mapbox-verzió). Egy claude.ai artifact-változatot is tud építeni, ha a MapLibre/Natural Earth függőségek elérhetők; ez itt kihagyható.
-- Ha nagyobb lesz, érdemes átállni rendes projektre (pl. Vite + modulok); a funkcionalitást és a dizájnt ilyenkor is meg kell tartani.
+- Vite, a gyökér a `web/`: `web/index.html`, `web/src/main.js` (térkép + UI), `i18n.js` + `locales/{hu,en,es}.js`, `basemap.js`, `analytics.js`, `data/` (`teams.js` `[név, ország, szín]`, `cities.js`, `demo.js` a `blur()`-ral).
+- Új felirat: kulcs mindhárom locale-ba, a HTML-ben `data-i18n` / `data-i18n-attr`, a JS-ben `t()`.
+- Parancsok (PowerShell, a repo gyökerében): `npm.cmd run dev`, `npm.cmd run build`, `npm.cmd run deploy` (build + `firebase deploy --only hosting:app`).
+- MapLibre v6 csak ESM; Vite alatt kötelező a `setWorkerUrl(...?worker&url)`, enélkül nem jönnek a csempék.
+- A gyökér `index.html` csak a GitHub Pages átirányítója, nem az app.
 
 ## Dizájnszabályok
 
@@ -43,16 +46,16 @@ Minimalista, modern, ne nézzen ki „sablonosnak”.
 - Szegélyek és vonalak helyett tér és lágy árnyék; pill formák; lekerekítés 26/16/11 px.
 - Kevés magyarázó szöveg. Mobilon: a kártya felső sáv, a csapatlista vízszintes chip-sor, a bejelölő panel alulról jön fel.
 
-## Mapbox token
+## Kulcsok
 
-- Publikus `pk.` token, az `index.html`-be (build.py-ba) beégetve; a Mapbox fiókban URL-korlátozva `https://gerisann.github.io`-ra.
-- A GitHub push protection secretnek jelöli: az első pushnál bypassolva lett. Új domainnél a korlátozást bővíteni kell.
-- Ne commitolj `sk.` (titkos) tokent.
+- A MapLibre + OpenFreeMap nem igényel kulcsot. A régi Mapbox `pk.` token kikerült a kódból (a git-történetben még benne van; a Mapbox-fiókban visszavonható).
+- Csak publikus azonosítók kerülhetnek a kódba / `.env.local`-ba (GTM-ID, Firebase webconfig). Titkos kulcsot ne commitolj.
 
 ## Következő lépések (terv)
 
-1. **Közös adatbázis** (pl. Supabase + PostGIS): `pins` tábla, egy pin / felhasználó, mindenki olvassa, csak a sajátját írja (RLS). Csak elmosott koordináta + csapat + pontosság + időbélyeg.
-2. **Belépés** (e-mail magic link / Google), névtelen megjelenítéssel.
+Részletesen: `docs/terv.md` (F0–F5). F0 kész (Vite, MapLibre, i18n, mérési réteg, deploy).
+1. **Közös adatbázis:** Firestore `pins/{uid}` (egy pin / fiók), írás csak a Cloud Run API-n át, olvasás a CDN-ről cache-elt `/api/pins`-ből. Csak elmosott koordináta + csapat + pontosság + időbélyeg.
+2. **Belépés:** Firebase Auth, Google + e-mail link, névtelen megjelenítéssel.
 3. **Moderálás és visszaélés elleni védelem** (rate limit, csapatnév-szűrés, spam).
 4. **GDPR:** adatvédelmi tájékoztató, saját pin törlése, adatminimalizálás.
 5. Csapatadatbázis bővítése (nagy klublista, logók jogtiszta forrásból), statisztikák (top csapatok városonként).

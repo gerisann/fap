@@ -14,3 +14,5 @@ const TEAMS = [
 ["Al Hilal","KSA","#005CA9"],["Al Nassr","KSA","#FFE500"],["Al Ittihad","KSA","#F4D03F"],["Persepolis","IRN","#E30613"],["Urawa Red Diamonds","JPN","#E60012"],["Kashima Antlers","JPN","#B71C1C"],["Jeonbuk Motors","KOR","#00843D"],["Shanghai Port","CHN","#E30613"],["Melbourne Victory","AUS","#0A2D6E"],["Sydney FC","AUS","#6CACE4"],["Mohun Bagan","IND","#7A1E2C"],["East Bengal","IND","#F2A900"],
 ["Magyarország","NAT","#CE2939"],["Brazil","NAT","#FFDF00"],["Argentina","NAT","#75AADB"],["England","NAT","#f5f5f5"],["France","NAT","#21304D"],["Germany","NAT","#e0e0e0"],["Spain","NAT","#C60B1E"],["Italy","NAT","#0066CC"],["Portugal","NAT","#006600"],["Netherlands","NAT","#F36C21"],["Croatia","NAT","#E2231A"],["Morocco","NAT","#C1272D"],["Japan","NAT","#1B2A8C"],["USA","NAT","#3C3B6E"],["Mexico","NAT","#006847"]
 ];
+
+export { TEAMS };

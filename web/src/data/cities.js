@@ -18,3 +18,5 @@ const CITIES = [
 ];
 // global clubs pulled into every city
 const GLOBAL = [["Real Madrid",.11],["FC Barcelona",.1],["Manchester United",.08],["Liverpool",.07],["Arsenal",.05],["Chelsea",.05],["Bayern München",.05],["Manchester City",.05],["Paris Saint-Germain",.04],["Juventus",.035],["AC Milan",.03],["Inter",.025],["Borussia Dortmund",.02],["Inter Miami",.015],["Al Nassr",.012]];
+
+export { CITIES, GLOBAL };
