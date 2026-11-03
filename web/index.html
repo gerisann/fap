@@ -90,6 +90,12 @@
   </div>
 
   <div class="acct-in" id="acctIn" hidden>
+    <div class="uname" id="unameView" hidden><span>@<b id="unameText"></b></span><button class="textbtn" id="unameEdit" data-i18n="change"></button></div>
+    <button class="textbtn uname-add" id="unameAdd" hidden data-i18n="setUsername"></button>
+    <form class="uname-form" id="unameForm" hidden>
+      <div class="label" data-i18n="usernameOpt"></div>
+      <div class="uname-row"><input class="field sm" id="unameInput" maxlength="20" autocomplete="username" spellcheck="false" data-i18n-attr="placeholder:nickPh;aria-label:usernameOpt"><button class="chipbtn" data-i18n="saveChanges"></button></div>
+    </form>
     <div class="mypin" id="myPinBox" hidden>
       <span class="dot" id="mpDot"></span>
       <div><b id="mpTeam"></b><span id="mpSub"></span></div>

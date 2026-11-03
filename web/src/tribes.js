@@ -1,8 +1,14 @@
 /* Tribes: a team + city community with a feed. Map badges, the board list, and the tribe sheet.
    All access rules live in firestore.rules; the checks here only give friendlier messages first. */
 
+import { isProfane, isBadName } from "./profanity.js";
+
 const $ = s => document.querySelector(s);
 const CHECKIN_MS = 72 * 3600 * 1000;
+
+// same format as validNick() in firestore.rules
+export const validUsername = n => typeof n === "string" && /^[A-Za-z0-9_-]{3,20}$/.test(n) && !isBadName(n);
+export const usernameProblem = n => !/^[A-Za-z0-9_-]{3,20}$/.test(n) ? "nickInvalid" : isBadName(n) ? "nickBad" : null;
 
 // same ~50 km box as close() in firestore.rules, so the UI and the rules agree
 export function nearBox(aLat, aLng, bLat, bLng) {
@@ -122,18 +128,23 @@ export function initTribes(ctx) {
     head(open.team, t("tribeSub", { city: open.city, n: num(open.memberCount) }) + (member?.role === "captain" ? " · " + t("captain") : ""));
   }
 
-  /* nickname + community rules, asked once before the first join / create */
+  /* username + community rules, asked once before the first join / create (the name may already exist from the account block) */
   function needProfile(then) {
-    if (profile?.nick) return false;
-    afterNick = then; $("#tsNick").hidden = false; $("#nickInput").focus(); return true;
+    if (validUsername(profile?.nick) && profile?.rulesAt) return false;
+    afterNick = then; $("#tsNick").hidden = false;
+    const inp = $("#nickInput"); if (validUsername(profile?.nick)) inp.value = profile.nick; inp.focus();
+    return true;
   }
   $("#tsNick").onsubmit = async e => {
     e.preventDefault();
     const nick = $("#nickInput").value.trim();
-    if (!/^[\p{L}\p{N}][\p{L}\p{N} _.\-]{1,23}$/u.test(nick)) { status(t("nickInvalid"), true); return; }
+    const bad = usernameProblem(nick); if (bad) { status(t(bad), true); return; }
     if (!$("#rulesOk").checked) { status(t("rulesNeeded"), true); return; }
-    try { await ctx.backend().saveProfile(nick); profile = { nick }; $("#tsNick").hidden = true; status(""); track("nick_set"); const f = afterNick; afterNick = null; f?.(); }
-    catch (err) { status(t("saveFailed"), true); }
+    try {
+      await ctx.backend().claimUsername(nick, profile?.nick, true);
+      profile = { ...profile, nick, rulesAt: Date.now() }; ctx.onProfile?.(profile);
+      $("#tsNick").hidden = true; status(""); track("nick_set"); const f = afterNick; afterNick = null; f?.();
+    } catch (err) { status(t(err.code === "taken" ? "nickTaken" : "saveFailed"), true); }
   };
 
   async function checkInHere(then) {
@@ -255,11 +266,13 @@ export function initTribes(ctx) {
   const tooFast = e => e.code === "permission-denied";
   $("#tsComposer").onsubmit = async e => {
     e.preventDefault(); const ta = $("#postText"), text = ta.value.trim(); if (!text || !open || !member) return;
+    if (isProfane(text)) { status(t("profane"), true); track("post_blocked"); return; }
     try { await ctx.backend().createPost(open.id, member.nick, text); ta.value = ""; status(""); track("post_create", { team: open.team }); }
     catch (err) { status(t(tooFast(err) ? "postTooFast" : "saveFailed"), true); track("post_error", { code: err.code || "unknown" }); }
   };
   async function sendReply(p, input) {
     const text = input.value.trim(); if (!text || !member) return;
+    if (isProfane(text)) { status(t("profane"), true); track("post_blocked"); return; }
     try { await ctx.backend().createReply(open.id, p.id, member.nick, text); input.value = ""; track("reply_create", { team: open.team }); }
     catch (err) { if (import.meta.env.DEV) console.warn("reply", err); status(t(tooFast(err) ? "postTooFast" : "saveFailed"), true); }
   }
@@ -275,5 +288,5 @@ export function initTribes(ctx) {
     catch (_) { status(t("saveFailed"), true); }
   }
 
-  return { setBackend, onUser, render, setVisible, isOpen: () => !sheet.hidden, close: closeSheet };
+  return { setBackend, onUser, render, setVisible, isOpen: () => !sheet.hidden, close: closeSheet, setProfile: p => { profile = p; } };
 }

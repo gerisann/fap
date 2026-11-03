@@ -84,7 +84,20 @@ const uid = () => auth.currentUser.uid;
 const snapData = d => ({ id: d.id, ...d.data({ serverTimestamps: "estimate" }) });
 
 export async function getProfile() { const s = await getDoc(doc(db, "users", uid())); return s.exists() ? s.data() : null; }
-export const saveProfile = nick => setDoc(doc(db, "users", uid()), { nick, rulesAt: serverTimestamp() });
+/* username: claim usernames/{lowercase} and update the profile in one batch; release the old claim if it was mine */
+export async function claimUsername(nick, oldNick, acceptRules) {
+  const me = uid(), lower = nick.toLowerCase(), b = writeBatch(db);
+  const taken = await getDoc(doc(db, "usernames", lower));
+  if (taken.exists() && taken.data().uid !== me) { const e = new Error("taken"); e.code = "taken"; throw e; }
+  if (!taken.exists()) b.set(doc(db, "usernames", lower), { uid: me });
+  const oldLower = oldNick?.toLowerCase();
+  if (oldLower && oldLower !== lower) {
+    const old = await getDoc(doc(db, "usernames", oldLower));
+    if (old.exists() && old.data().uid === me) b.delete(doc(db, "usernames", oldLower));
+  }
+  b.set(doc(db, "users", me), acceptRules ? { nick, rulesAt: serverTimestamp() } : { nick }, { merge: true });
+  await b.commit();
+}
 
 // "I'm here now": city-level (0.05° grid), private, valid 72 h for joining nearby tribes
 const grid = v => Math.round(v / 0.05) * 0.05;

@@ -7,7 +7,8 @@ import { blur, makeDemo } from "./data/demo.js";
 import { loadStyle } from "./basemap.js";
 import { searchCities, searchAddress, searchAreas } from "./geocode.js";
 import { placeGeometry, circle, distKm, bbox, contains } from "./area.js";
-import { initTribes } from "./tribes.js";
+import { initTribes, validUsername, usernameProblem } from "./tribes.js";
+import { isProfane } from "./profanity.js";
 import { asyncCombo } from "./combo.js";
 import { t, num, lang, locale, applyDom, setLang, onLangChange } from "./i18n.js";
 import { track, initAnalytics, consent, setConsent } from "./analytics.js";
@@ -30,7 +31,7 @@ let view = "pins", selected = [], showDemo = true;
 let area = null;                 // { level, name, geom, test(lng, lat) }; null = whole world
 let tribes = null;               // tribe layer + sheet (tribes.js), set up after the board
 let real = new Map();            // uid -> pin from the shared store
-let user = null, myPin = null, backend = null, loginMethod = null;
+let user = null, myPin = null, backend = null, loginMethod = null, profile = null;
 const DRAFT = "tm.draft";        // blurred pin waiting for sign-in; never the raw location
 try { localStorage.removeItem("tm.mypin"); } catch (_) {} // device-only pins from before sign-in existed
 function points() { const arr = showDemo ? DEMO.slice() : []; for (const p of real.values()) arr.push(p); return arr; }
@@ -84,7 +85,8 @@ function applyTheme(next) {
 
 /* two clustered sources, both drawn as team-share donuts: "all" (top 40 teams) and "sel" (the ≤5 picked teams).
    Everything is scoped to the chosen area first. */
-function fc(arr) { return { type: "FeatureCollection", features: arr.map(p => ({ type: "Feature", properties: { t: p.t, c: colorOf(p.t), p: p.p, d: p.demo ? 1 : 0 }, geometry: { type: "Point", coordinates: [p.lng, p.lat] } })) }; }
+// m: 1 for my own pin, which is drawn as a separate map pin instead of a dot
+function fc(arr) { return { type: "FeatureCollection", features: arr.map(p => ({ type: "Feature", properties: { t: p.t, c: colorOf(p.t), p: p.p, d: p.demo ? 1 : 0, m: p === myPin ? 1 : 0 }, geometry: { type: "Point", coordinates: [p.lng, p.lat] } })) }; }
 function keyProps(keys) { const props = {}; keys.forEach((tm, i) => { props["k" + i] = ["+", ["case", ["==", ["get", "t"], tm], 1, 0]]; }); return props; }
 function addClusterSource(id, data, keys) {
   if (map.getLayer(id + "-c")) map.removeLayer(id + "-c");
@@ -93,7 +95,7 @@ function addClusterSource(id, data, keys) {
   map.addSource(id, { type: "geojson", data, cluster: true, clusterRadius: 48, clusterMaxZoom: 15, clusterProperties: keyProps(keys) });
   map.addLayer({ id: id + "-c", type: "circle", source: id, filter: ["has", "point_count"], paint: {
     "circle-color": "rgba(0,0,0,0)", "circle-radius": ["step", ["get", "point_count"], 12, 10, 15, 50, 19, 200, 24, 1000, 30, 4000, 37] } });
-  map.addLayer({ id: id + "-u", type: "circle", source: id, filter: ["!", ["has", "point_count"]], paint: {
+  map.addLayer({ id: id + "-u", type: "circle", source: id, filter: ["all", ["!", ["has", "point_count"]], ["!=", ["get", "m"], 1]], paint: {
     "circle-color": ["get", "c"], "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3.5, 14, 7],
     "circle-stroke-color": ["case", ["==", ["get", "d"], 0], P().accent, P().paper], "circle-stroke-width": ["case", ["==", ["get", "d"], 0], 2.5, 1.2] } });
 }
@@ -436,8 +438,22 @@ function setStatus(msg, err) { const s = $("#status"); s.textContent = msg; s.cl
 function showMine(p) {
   if (myMarker) { myMarker.remove(); myMarker = null; }
   if (!p) return;
-  const el = document.createElement("div"); el.className = "me"; el.title = t("you", { team: p.t });
-  myMarker = new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
+  // the marker element gets MapLibre's positioning transform, so the drop animation lives on the inner .me-pin
+  const el = document.createElement("div"), pinEl = document.createElement("div"); pinEl.className = "me-pin"; pinEl.title = t("you", { team: p.t });
+  pinEl.innerHTML = `<svg viewBox="0 0 32 42" aria-hidden="true"><path d="M16 41s14-13.2 14-24.5a14 14 0 0 0-28 0C2 27.8 16 41 16 41z" fill="${colorOf(p.t)}" stroke="#fff" stroke-width="2.5"/><circle cx="16" cy="16.5" r="6" fill="#fff"/></svg>`;
+  const tag = document.createElement("span"); tag.textContent = profile?.nick && validUsername(profile.nick) ? "@" + profile.nick : t("me"); pinEl.append(tag);
+  el.append(pinEl);
+  el.addEventListener("click", ev => {
+    ev.stopPropagation();
+    const box = document.createElement("div");
+    const a = document.createElement("div"); a.className = "pop-t"; const d = document.createElement("span"); d.className = "dot"; d.style.background = colorOf(p.t); a.append(d, document.createTextNode(t("thisIsYou")));
+    const b = document.createElement("div"); b.className = "pop-s"; b.textContent = t("fanOf", { team: p.t }) + " · " + t({ exact: "popExact", area: "popArea", city: "popCity" }[p.p] || "popArea");
+    const acts = document.createElement("div"); acts.className = "pop-actions"; const e = document.createElement("button"); e.textContent = t("editPin"); e.onclick = () => { popup.remove(); openSheet(true); track("pin_edit_start", { source: "popup" }); }; acts.append(e);
+    box.append(a, b, acts);
+    const popup = new maplibregl.Popup({ offset: [0, -40], closeButton: false }).setLngLat([p.lng, p.lat]).setDOMContent(box).addTo(map);
+    track("my_pin_open");
+  });
+  myMarker = new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([p.lng, p.lat]).addTo(map);
 }
 function updateMine() {
   myPin = user ? real.get(user.uid) || null : null;
@@ -452,10 +468,13 @@ const account = $("#account");
 function closeAccount() { document.body.classList.remove("acct-open"); }
 function acctStatus(msg, err) { const s = $("#acctStatus"); s.textContent = msg || ""; s.classList.toggle("err", !!err); }
 function renderAccount() {
-  const signed = !!user, name = user?.email || "";
-  for (const a of [$("#acctAvatar"), $("#acctBtnAvatar")]) { a.textContent = signed ? (name[0] || "?").toUpperCase() : "?"; a.classList.toggle("anon", !signed); }
+  const signed = !!user, uname = validUsername(profile?.nick) ? profile.nick : null, name = uname ? "@" + uname : user?.email || "";
+  for (const a of [$("#acctAvatar"), $("#acctBtnAvatar")]) { a.textContent = signed ? ((uname || name)[0] || "?").toUpperCase() : "?"; a.classList.toggle("anon", !signed); }
   $("#acctName").textContent = signed ? name : t("guest");
-  $("#acctSub").textContent = t(signed ? "signedIn" : "signedOut");
+  $("#acctSub").textContent = signed ? (uname ? user.email : t("signedIn")) : t("signedOut");
+  $("#unameView").hidden = !signed || !uname; $("#unameText").textContent = uname || "";
+  $("#unameAdd").hidden = !signed || !!uname || !$("#unameForm").hidden;
+  if (!signed) $("#unameForm").hidden = true;
   $("#acctOut").hidden = signed; $("#acctIn").hidden = !signed; $("#signOutBtn").hidden = !signed;
   if (signed) $("#acctLogin").hidden = true;
   $("#myPinBox").hidden = $("#myPinActs").hidden = !myPin; $("#noPinBox").hidden = !signed || !!myPin;
@@ -464,6 +483,19 @@ function renderAccount() {
 $("#acctBtn").onclick = () => { document.body.classList.toggle("acct-open"); track("account_open"); };
 $("#acctClose").onclick = closeAccount;
 $("#acctLoginBtn").onclick = () => { const box = $("#acctLogin"); box.hidden = !box.hidden; track("login_open"); };
+/* optional username (also the tribe nickname): unique, English letters, digits, - and _ */
+function openUnameForm() { $("#unameForm").hidden = false; $("#unameAdd").hidden = true; const i = $("#unameInput"); i.value = profile?.nick && validUsername(profile.nick) ? profile.nick : ""; i.focus(); }
+$("#unameAdd").onclick = openUnameForm; $("#unameEdit").onclick = openUnameForm;
+$("#unameForm").onsubmit = async e => {
+  e.preventDefault(); if (!backend || !user) return;
+  const nick = $("#unameInput").value.trim(), bad = usernameProblem(nick);
+  if (bad) { acctStatus(t(bad), true); return; }
+  try {
+    await backend.claimUsername(nick, profile?.nick, false);
+    profile = { ...profile, nick }; tribes?.setProfile(profile);
+    $("#unameForm").hidden = true; acctStatus(t("usernameSaved")); renderAccount(); showMine(myPin); track("username_set");
+  } catch (err) { acctStatus(t(err.code === "taken" ? "nickTaken" : "saveFailed"), true); track("username_error", { code: err.code || "unknown" }); }
+};
 $("#mpShow").onclick = showMyPin;
 $("#mpEdit").onclick = () => { openSheet(true); track("pin_edit_start"); };
 $("#mpAdd").onclick = () => { openSheet(); $("#teamInput").focus(); track("pin_flow_start", { source: "account" }); };
@@ -492,6 +524,7 @@ $("#saveBtn").onclick = () => {
   const prec = document.querySelector('input[name="prec"]:checked').value;
   const [bl, bg] = editing && keepLL && prec === myPin.p ? [myPin.lat, myPin.lng] : blur(pickLL[0], pickLL[1], prec);
   const pin = { t: chosenTeam, lat: +bl.toFixed(6), lng: +bg.toFixed(6), p: prec };
+  if (isProfane(pin.t)) { setStatus(t("profane"), true); track("pin_blocked"); return; }
   if (user && backend) { publish(pin); return; }
   try { localStorage.setItem(DRAFT, JSON.stringify(pin)); } catch (_) {}
   authBox.hidden = false; $("#saveBtn").hidden = true;
@@ -526,6 +559,7 @@ tribes = initTribes({
   openPinSheet: () => { openSheet(); $("#teamInput").focus(); },
   openAuth: () => { $("#acctLogin").hidden = false; if (phone.matches) document.body.classList.add("acct-open"); },
   setSheetOpen: open => document.body.classList.toggle("sheet-open", open || !sheet.hidden),
+  onProfile: p => { profile = p; renderAccount(); showMine(myPin); },
 });
 if (location.pathname.startsWith("/t/")) setView("tribes");
 
@@ -533,9 +567,10 @@ if (location.pathname.startsWith("/t/")) setView("tribes");
 import("./firebase.js").then(async fb => {
   backend = fb;
   tribes.setBackend(fb);
-  fb.onUser(u => {
-    user = u;
+  fb.onUser(async u => {
+    user = u; profile = null;
     tribes.onUser(u);
+    if (u) fb.getProfile().then(p => { profile = p; renderAccount(); showMine(myPin); }).catch(() => {});
     if (u) { authBox.hidden = true; $("#saveBtn").hidden = false; if (loginMethod) { track("login_success", { method: loginMethod }); loginMethod = null; } }
     updateMine();
     const d = u && readDraft(); if (d) { openSheet(); publish(d); }

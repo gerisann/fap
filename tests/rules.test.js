@@ -2,7 +2,7 @@
 import { test, before, after, beforeEach } from "node:test";
 import { readFileSync } from "node:fs";
 import { initializeTestEnvironment, assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
-import { doc, setDoc, getDoc, writeBatch, serverTimestamp, increment, updateDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, deleteDoc, writeBatch, serverTimestamp, increment, updateDoc } from "firebase/firestore";
 
 let env;
 before(async () => {
@@ -21,7 +21,12 @@ const LON = { lat: 51.5072, lng: -0.1276 };
 const tidOf = (team, c = BUD) => c.cityOsm + "_" + slug(team);
 
 const pin = (uid, t, at = BUD) => setDoc(doc(db(uid), "pins", uid), { t, lat: at.lat, lng: at.lng, p: "area", ts: serverTimestamp() });
-const nick = (uid, n = "Fan_" + uid) => setDoc(doc(db(uid), "users", uid), { nick: n, rulesAt: serverTimestamp() });
+function nick(uid, n = "Fan_" + uid, rules = true) { // claim the username + write the profile in one batch
+  const d = db(uid), b = writeBatch(d);
+  b.set(doc(d, "usernames", n.toLowerCase()), { uid });
+  b.set(doc(d, "users", uid), rules ? { nick: n, rulesAt: serverTimestamp() } : { nick: n });
+  return b.commit();
+}
 const here = (uid, at) => setDoc(doc(db(uid), "presence", uid), { lat: at.lat, lng: at.lng, ts: serverTimestamp() });
 
 function createTribe(uid, team, c = BUD, n = "Fan_" + uid, tid = tidOf(team, c)) {
@@ -73,11 +78,41 @@ test("pins: verified owner only", async () => {
   await assertFails(setDoc(doc(db("bob"), "pins", "alice"), { t: "X", lat: 1, lng: 1, p: "area", ts: serverTimestamp() }));
 });
 
-test("users: nickname format, private read", async () => {
-  await assertSucceeds(nick("alice", "Gooner Ádám"));
+test("users: username format, profanity, uniqueness, rename, private read", async () => {
+  await assertSucceeds(nick("alice", "Gooner_Adam"));
   await assertFails(nick("bob", "x"));
   await assertFails(nick("bob", "<script>"));
+  await assertFails(nick("bob", "Gooner Ádám"));            // ASCII only, no spaces
+  await assertFails(nick("bob", "fuck_you"));
+  await assertFails(nick("bob", "K_u_r_v_a"));               // separators do not hide it
+  await assertFails(nick("bob", "gooner_adam"));             // taken (case-insensitive)
+  await assertFails(setDoc(doc(db("bob"), "users", "bob"), { nick: "NoClaim", rulesAt: serverTimestamp() })); // must claim the name
   await assertFails(getDoc(doc(db("bob"), "users", "alice")));
+  // rename: release the old claim in the same batch, then the old name is free for others
+  const d = db("alice"), b = writeBatch(d);
+  b.delete(doc(d, "usernames", "gooner_adam"));
+  b.set(doc(d, "usernames", "gunner"), { uid: "alice" });
+  b.set(doc(d, "users", "alice"), { nick: "Gunner", rulesAt: serverTimestamp() });
+  await assertSucceeds(b.commit());
+  await assertFails(deleteDoc(doc(db("bob"), "usernames", "gunner")));  // not mine
+  await assertSucceeds(nick("bob", "Gooner_Adam"));
+});
+
+test("profanity: pins and posts", async () => {
+  await assertFails(pin("alice", "Fuck FC"));
+  await assertSucceeds(pin("alice", "Ferencváros"));
+  await nick("alice"); await createTribe("alice", "Ferencváros");
+  const tid = tidOf("Ferencváros");
+  await assertFails(post("alice", tid, "p1", "ez kurvára rossz"));
+  await assertSucceeds(post("alice", tid, "p2", "Baszk csapat ellen játszunk, fagyi után!"));
+});
+
+test("join needs accepted community rules", async () => {
+  const tid = await seedTribe();
+  await pin("bob", "Újpest"); await nick("bob", "Fan_bob", false);
+  await assertFails(join("bob", tid));
+  await assertSucceeds(setDoc(doc(db("bob"), "users", "bob"), { nick: "Fan_bob", rulesAt: serverTimestamp() }));
+  await assertSucceeds(join("bob", tid));
 });
 
 test("tribe create: own pin team, nearby, deterministic id", async () => {

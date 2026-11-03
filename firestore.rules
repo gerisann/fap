@@ -21,6 +21,18 @@ service cloud.firestore {
     function isCaptain(t) { return isMember(t) && get(member(t, me())).data.role in ['captain', 'cocaptain']; }
     function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
     function text(s, max) { return s is string && s.trim().size() > 0 && s.size() <= max; }
+
+    // profanity: KEEP IN SYNC with web/src/profanity.js (STEMS / NAME_STEMS). Stems match at a word start.
+    function badText(s) {
+      return s.lower().matches('(?s)(.*[^\\p{L}])?(fasz|geci|kurv|picsa|picsá|punci|buzi|köcsög|kocsog|baszd|baszom|baszott|bazdmeg|bazmeg|ribanc|szopd|szopj|szopó|kibasz|elbasz|megbasz|fuck|shit|cunt|bitch|nigg|whore|slut|asshole|motherf|retard|faggot|rapist|puta|mierda|cabrón|cabron|gilipoll|pendej|maricón|maricon|joder|coño|verga|culero|nazi|hitler).*');
+    }
+    function badName(s) {
+      return s.lower().replace('[_-]', '').matches('.*(fasz|geci|kurv|picsa|punci|buzi|kocsog|baszd|baszom|baszott|bazdmeg|bazmeg|ribanc|szopd|szopj|kibasz|elbasz|megbasz|fuck|shit|cunt|bitch|nigg|whore|slut|asshole|motherf|retard|faggot|rapist|puta|mierda|cabron|gilipoll|pendej|maricon|joder|verga|culero|nazi|hitler).*');
+    }
+    function cleanText(s, max) { return text(s, max) && !badText(s); }
+    // username: 3–20 chars, English letters, digits, - and _; unique via usernames/{lowercase}
+    function validNick(n) { return n is string && n.matches('^[A-Za-z0-9_-]{3,20}$') && !badName(n); }
+    function usernameDoc(n) { return /databases/$(database)/documents/usernames/$(n); }
     // every post / reply / reply-count bump must be batched with this rate-limited stamp
     function stampedNow(t) { return getAfter(member(t, me())).data.lastPostAt == request.time; }
 
@@ -45,7 +57,7 @@ service cloud.firestore {
     function validPin(d) {
       return d.keys().hasOnly(['t', 'lat', 'lng', 'p', 'ts'])
         && d.keys().hasAll(['t', 'lat', 'lng', 'p', 'ts'])
-        && d.t is string && d.t.size() > 0 && d.t.size() <= 40
+        && cleanText(d.t, 40)
         && d.lat is number && d.lat >= -85 && d.lat <= 85
         && d.lng is number && d.lng >= -180 && d.lng <= 180
         && d.p in ['area', 'city', 'exact']
@@ -70,14 +82,27 @@ service cloud.firestore {
         && request.resource.data.ts == request.time;
     }
 
-    // ---------- users/{uid}: private profile (nickname + accepted community rules) ----------
+    // ---------- users/{uid}: private profile (username + when the community rules were accepted) ----------
     match /users/{uid} {
       allow read, delete: if signedIn() && me() == uid;
       allow create, update: if signedIn() && me() == uid
         && request.resource.data.keys().hasOnly(['nick', 'rulesAt'])
-        && request.resource.data.nick is string
-        && request.resource.data.nick.matches('^[\\p{L}\\p{N}][\\p{L}\\p{N} _.\\-]{1,23}$')
-        && request.resource.data.rulesAt is timestamp;
+        && validNick(request.resource.data.nick)
+        && (!('rulesAt' in request.resource.data) || request.resource.data.rulesAt is timestamp)
+        // the name must be claimed by me in the same batch (or already)
+        && getAfter(usernameDoc(request.resource.data.nick.lower())).data.uid == me();
+    }
+
+    // ---------- usernames/{lowercase}: uniqueness claims ----------
+    match /usernames/{name} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == me()
+        && name.matches('^[a-z0-9_-]{3,20}$')
+        && getAfter(userDoc(me())).data.nick.lower() == name;
+      // release only my own claim, and only when my profile no longer uses it
+      allow delete: if signedIn() && resource.data.uid == me()
+        && (!existsAfter(userDoc(me())) || getAfter(userDoc(me())).data.nick.lower() != name);
     }
 
     // ---------- tribes/{tid}: one per team + city; id = <cityOsm>_<team slug> ----------
@@ -122,7 +147,7 @@ service cloud.firestore {
         allow read: if true;
         allow create: if signedIn() && me() == uid
           && request.resource.data.keys().hasOnly(['nick', 'role', 'joinedAt'])
-          && exists(userDoc(uid))
+          && exists(userDoc(uid)) && ('rulesAt' in get(userDoc(uid)).data)
           && request.resource.data.nick == get(userDoc(uid)).data.nick
           && request.resource.data.joinedAt == request.time
           && (
@@ -150,7 +175,7 @@ service cloud.firestore {
           && request.resource.data.authorUid == me()
           && request.resource.data.nick == get(member(tid, me())).data.nick
           && request.resource.data.type == 'text'
-          && text(request.resource.data.text, 500)
+          && cleanText(request.resource.data.text, 500)
           && request.resource.data.createdAt == request.time
           && request.resource.data.replyCount == 0
           && request.resource.data.reportCount == 0
@@ -180,7 +205,7 @@ service cloud.firestore {
             && request.resource.data.keys().hasOnly(['authorUid', 'nick', 'text', 'createdAt', 'hidden'])
             && request.resource.data.authorUid == me()
             && request.resource.data.nick == get(member(tid, me())).data.nick
-            && text(request.resource.data.text, 500)
+            && cleanText(request.resource.data.text, 500)
             && request.resource.data.createdAt == request.time
             && request.resource.data.hidden == false
             && getAfter(post(tid, pid)).data.replyCount == get(post(tid, pid)).data.replyCount + 1;
