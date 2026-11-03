@@ -98,7 +98,7 @@ for (const [list, national] of [[CLUBS, false], [NATIONAL, true]]) {
 if (failed > (CLUBS.length + NATIONAL.length) / 2) { console.error(`${failed} lists failed, keeping the old file`); process.exit(1); }
 
 // curated teams take the id of their API twin and are not listed again; youth, reserve and women's sides are left out
-const YOUTH = /\s(U\d{2}|II|III|B|W|Women|Reserves?)$/i;
+const YOUTH = /\s(U\d{2}|W|Women|Reserves?)$/i; // not "II": Willem II is a first-team club
 const ids = {}, rest = [], skipped = [];
 for (const [id, t] of seen) {
   const twin = TEAMS.find(([n, c]) => (c === "NAT") === t.national && (t.national || c === t.country) && nameMatch(n, t.name));

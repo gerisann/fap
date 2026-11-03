@@ -15,6 +15,12 @@ export const ALIASES = {
   "Olympique de Marseille": ["Marseille"], "Olympique Lyonnais": ["Lyon"], "Sporting CP": ["Sporting CP"],
   "Inter Miami": ["Inter Miami"], "LA Galaxy": ["Los Angeles Galaxy"], "Al Nassr": ["Al-Nassr"], "Al Hilal": ["Al-Hilal Saudi FC"],
   "Kashima Antlers": ["Kashima"], "Shanghai Port": ["Shanghai SIPG"],
+  // from the first teams.yml run (2026-11-03)
+  "Leeds United": ["Leeds"], "LOSC Lille": ["Lille"], "PSV": ["PSV Eindhoven"], "Olympiacos": ["Olympiakos Piraeus"],
+  "Rapid Wien": ["Rapid Vienna"], "Hajduk Split": ["HNK Hajduk Split"], "Steaua București": ["FCSB"],
+  "Young Boys": ["BSC Young Boys"], "Basel": ["FC Basel 1893"], "ZTE": ["Zalaegerszeg", "Zalaegerszegi TE"],
+  "Chivas Guadalajara": ["Guadalajara Chivas"], "LAFC": ["Los Angeles FC"], "Wydad Casablanca": ["Wydad AC"],
+  "Esperance": ["ES Tunis"], "Urawa Red Diamonds": ["Urawa"], "Mohun Bagan": ["ATK Mohun Bagan"],
 };
 // club-form words that one side writes and the other drops (checked on 931 real API names, 2026-11-03/04)
 const NOISE = new Set(["fc", "cf", "ac", "afc", "sc", "cd", "sd", "ud", "rc", "rcd", "fk", "sk", "tc", "sv", "vfb", "vfl", "kv", "club", "de", "the", "as", "ss", "ssc", "calcio", "futbol", "football", "1"]);
