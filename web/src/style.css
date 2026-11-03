@@ -204,9 +204,38 @@ body.sheet-open .cta{display:none}
 .myrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px 10px;font-size:12px;color:var(--mute)}
 .myrow span{flex-basis:100%;text-align:center}
 
-/* language + privacy */
-.langsel{appearance:none;border:0;background:var(--wash);height:32px;border-radius:999px;padding:0 12px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;cursor:pointer}
-.privacy{border:0;background:transparent;color:var(--mute);font-size:12px;padding:0;margin:0 8px;align-self:flex-start}
+/* account: top-right card (desktop) / bottom sheet (phones) */
+.account{position:fixed;z-index:5;top:calc(18px + env(safe-area-inset-top,0px));right:calc(18px + env(safe-area-inset-right,0px));width:280px;box-sizing:border-box;
+  background:var(--paper);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:16px;display:flex;flex-direction:column;gap:12px}
+body.sheet-open .account{display:none}
+.acct-head{display:flex;align-items:center;gap:10px}
+.avatar{width:36px;height:36px;border-radius:50%;background:var(--cobalt);color:#fff;display:grid;place-items:center;font:800 15px/1 var(--f-display);flex:none}
+.avatar.anon{background:var(--wash-2);color:var(--mute)}
+.acct-who{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px}
+.acct-who b{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct-who span{font-size:12px;color:var(--mute)}
+.acct-close{display:none}
+.acct-out .authbox{margin-top:8px}
+.acct-out .save{width:100%}
+.mypin{display:flex;align-items:center;gap:10px;background:var(--wash);border-radius:var(--r-md);padding:12px 14px}
+.mypin .dot{width:12px;height:12px}
+.mypin b{display:block;font-weight:600;font-size:14px}
+.mypin span{font-size:12px;color:var(--mute)}
+.acct-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.acct-actions button{border:0;border-radius:999px;padding:9px 4px;font-weight:600;font-size:12px;background:var(--wash);color:var(--ink);white-space:nowrap}
+.acct-actions .primary{background:var(--ink);color:var(--paper)}
+.nopin{display:flex;flex-direction:column;gap:8px;align-items:flex-start;font-size:13px;color:var(--mute)}
+.nopin .chipbtn{padding:10px 16px;border-radius:999px}
+.acct-tools{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.acct-tools-r{display:flex;align-items:center;gap:4px}
+.flags{display:flex;gap:6px;background:var(--wash);border-radius:999px;padding:4px}
+.flag{border:0;padding:0;width:24px;height:24px;border-radius:50%;overflow:hidden;background:none;display:grid;opacity:.5;transition:opacity .15s,box-shadow .15s}
+.flag svg{width:100%;height:100%;display:block}
+.flag:hover{opacity:.85}
+.flag[aria-pressed="true"]{opacity:1;box-shadow:0 0 0 2px var(--paper),0 0 0 4px var(--cobalt)}
+.acct-btn{display:none;border:0;background:none;padding:0}
+.acct-btn .avatar{width:32px;height:32px;font-size:13px}
+.privacy{border:0;background:transparent;color:var(--mute);font-size:12px;padding:0}
 
 /* consent */
 .consent{position:fixed;z-index:8;right:calc(18px + env(safe-area-inset-right,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));width:340px;box-sizing:border-box;
@@ -219,7 +248,12 @@ body.sheet-open .cta{display:none}
 
 @media (max-width:720px){
   .consent{left:calc(10px + env(safe-area-inset-left,0px));right:calc(10px + env(safe-area-inset-right,0px));bottom:calc(10px + env(safe-area-inset-bottom,0px));width:auto}
-  .privacy{margin:0 6px}
+  .board-head{align-items:center}
+  .acct-btn{display:grid}
+  .account{display:none;top:auto;bottom:0;left:0;right:0;width:auto;z-index:7;border-radius:26px 26px 0 0;padding:20px;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
+  body.acct-open .account{display:flex}
+  body.acct-open .cta{display:none}
+  .acct-close{display:block}
   .board{top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));right:calc(10px + env(safe-area-inset-right,0px));width:auto;border-radius:22px;max-height:none}
   .board-head{padding:16px 18px 0}
   .logo{font-size:26px}

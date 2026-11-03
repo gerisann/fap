@@ -338,15 +338,36 @@ function setView(v) {
 $("#vPins").onclick = () => setView("pins"); $("#vHeat").onclick = () => setView("heat"); $("#vTribes").onclick = () => setView("tribes");
 $("#demoToggle").onchange = e => { showDemo = e.target.checked; rebuild(); track("demo_toggle", { on: showDemo }); };
 
-const langSel = $("#langSel"); langSel.value = lang;
-langSel.onchange = () => setLang(langSel.value);
-onLangChange(l => { if (lastGroups) renderStats(lastGroups, lastTotal); tribes?.render(); reloadStyle(); track("lang_change", { lang: l }); });
+const flags = document.querySelectorAll(".flag");
+const paintFlags = () => { for (const b of flags) b.setAttribute("aria-pressed", String(b.dataset.lang === lang)); };
+for (const b of flags) b.onclick = () => setLang(b.dataset.lang);
+paintFlags();
+onLangChange(l => { paintFlags(); renderAccount(); updateCta(); if (lastGroups) renderStats(lastGroups, lastTotal); tribes?.render(); reloadStyle(); track("lang_change", { lang: l }); });
 
-/* ---------- sign-up sheet ---------- */
+/* ---------- sign-up sheet (new pin, or editing my pin) ---------- */
 let chosenTeam = null, pickLL = null, picking = false, pendingMarker = null, myMarker = null;
+let editing = false, keepLL = false; // keepLL: editing without moving → keep the stored (already blurred) point, no re-blur drift
 const sheet = $("#sheet");
-function openSheet() { sheet.hidden = false; document.body.classList.add("sheet-open"); }
-$("#openSheet").onclick = () => { openSheet(); $("#teamInput").focus(); track("pin_flow_start"); };
+const PREC_KEY = { area: "precArea", city: "precCity", exact: "precExact" };
+function relabel(el, key) { el.dataset.i18n = key; el.textContent = t(key); }
+function openSheet(edit = false) {
+  editing = edit && !!myPin; keepLL = false;
+  relabel($("#sheetTitle"), editing ? "editPinTitle" : "sheetTitle");
+  relabel($("#saveBtn"), editing ? "saveChanges" : "save");
+  if (editing) {
+    chosenTeam = myPin.t; ti.value = myPin.t; $("#st1").classList.add("done");
+    pickLL = [myPin.lat, myPin.lng]; keepLL = true;
+    const b = $("#pickedBox"); b.classList.add("on"); b.textContent = t("currentPlace"); $("#st2").classList.add("done");
+    const r = document.querySelector(`input[name="prec"][value="${myPin.p}"]`); if (r) r.checked = true;
+    relabel($("#precHint"), HINTS[myPin.p] || "hintArea");
+    validate();
+  }
+  $("#myRow").hidden = !editing;
+  sheet.hidden = false; document.body.classList.add("sheet-open"); closeAccount();
+}
+function showMyPin() { if (!myPin) return; closeAccount(); map.flyTo({ center: [myPin.lng, myPin.lat], zoom: Math.max(map.getZoom(), 13), duration: 1200 }); track("my_pin_show"); }
+function updateCta() { relabel($("#openSheet"), myPin ? "myPin" : "cta"); }
+$("#openSheet").onclick = () => { if (myPin) { showMyPin(); return; } openSheet(); $("#teamInput").focus(); track("pin_flow_start"); };
 $("#closeSheet").onclick = () => { sheet.hidden = true; document.body.classList.toggle("sheet-open", !!tribes?.isOpen()); stopPick(); track("pin_flow_close", { team_chosen: !!chosenTeam, place_chosen: !!pickLL }); };
 /* place: city search, then an optional street + number inside that city. Query text never goes to analytics. */
 let pickedCity = null;
@@ -394,7 +415,7 @@ ti.addEventListener("keydown", e => {
 ti.addEventListener("blur", () => { setTimeout(() => { opts.hidden = true; }, 120); });
 
 function setPick(lng, lat, method, label) {
-  pickLL = [lat, lng];
+  pickLL = [lat, lng]; keepLL = false;
   if (!pendingMarker) {
     const el = document.createElement("div"); el.className = "me pending"; pendingMarker = new maplibregl.Marker({ element: el, draggable: true }).setLngLat([lng, lat]).addTo(map);
     pendingMarker.on("dragend", () => { const p = pendingMarker.getLngLat(); setPick(p.lng, p.lat, "drag"); });
@@ -421,9 +442,32 @@ function showMine(p) {
 function updateMine() {
   myPin = user ? real.get(user.uid) || null : null;
   showMine(myPin);
-  $("#myRow").hidden = !user; $("#delBtn").hidden = !myPin;
-  $("#whoAmI").textContent = user ? t("signedInAs", { email: user.email || "" }) : "";
+  if (!myPin) editing = false;
+  $("#myRow").hidden = !(editing && myPin);
+  renderAccount(); updateCta();
 }
+
+/* ---------- account block: who I am, my pin, language, theme ---------- */
+const account = $("#account");
+function closeAccount() { document.body.classList.remove("acct-open"); }
+function acctStatus(msg, err) { const s = $("#acctStatus"); s.textContent = msg || ""; s.classList.toggle("err", !!err); }
+function renderAccount() {
+  const signed = !!user, name = user?.email || "";
+  for (const a of [$("#acctAvatar"), $("#acctBtnAvatar")]) { a.textContent = signed ? (name[0] || "?").toUpperCase() : "?"; a.classList.toggle("anon", !signed); }
+  $("#acctName").textContent = signed ? name : t("guest");
+  $("#acctSub").textContent = t(signed ? "signedIn" : "signedOut");
+  $("#acctOut").hidden = signed; $("#acctIn").hidden = !signed; $("#signOutBtn").hidden = !signed;
+  if (signed) $("#acctLogin").hidden = true;
+  $("#myPinBox").hidden = $("#myPinActs").hidden = !myPin; $("#noPinBox").hidden = !signed || !!myPin;
+  if (myPin) { $("#mpDot").style.background = colorOf(myPin.t); $("#mpTeam").textContent = myPin.t; $("#mpSub").textContent = t("myPin") + " · " + t(PREC_KEY[myPin.p] || "precArea"); }
+}
+$("#acctBtn").onclick = () => { document.body.classList.toggle("acct-open"); track("account_open"); };
+$("#acctClose").onclick = closeAccount;
+$("#acctLoginBtn").onclick = () => { const box = $("#acctLogin"); box.hidden = !box.hidden; track("login_open"); };
+$("#mpShow").onclick = showMyPin;
+$("#mpEdit").onclick = () => { openSheet(true); track("pin_edit_start"); };
+$("#mpAdd").onclick = () => { openSheet(); $("#teamInput").focus(); track("pin_flow_start", { source: "account" }); };
+renderAccount(); updateCta();
 
 /* saving needs an account: a blurred draft waits in localStorage while the visitor signs in */
 const authBox = $("#authBox");
@@ -435,8 +479,8 @@ async function publish(pin) {
   try {
     await backend.savePin(pin); dropDraft();
     if (pendingMarker) { pendingMarker.remove(); pendingMarker = null; }
-    setStatus(t("saved"));
-    map.flyTo({ center: [pin.lng, pin.lat], zoom: Math.max(map.getZoom(), 12) });
+    setStatus(t(had ? "updated" : "saved"));
+    if (!had) map.flyTo({ center: [pin.lng, pin.lat], zoom: Math.max(map.getZoom(), 12) });
     track("pin_save", { team: pin.t, precision: pin.p, custom: !teamMeta.has(pin.t.toLowerCase()), update: had });
   } catch (e) {
     setStatus(t(e.code === "permission-denied" && had ? "tooFast" : "saveFailed"), true);
@@ -446,27 +490,31 @@ async function publish(pin) {
 }
 $("#saveBtn").onclick = () => {
   const prec = document.querySelector('input[name="prec"]:checked').value;
-  const [bl, bg] = blur(pickLL[0], pickLL[1], prec);
+  const [bl, bg] = editing && keepLL && prec === myPin.p ? [myPin.lat, myPin.lng] : blur(pickLL[0], pickLL[1], prec);
   const pin = { t: chosenTeam, lat: +bl.toFixed(6), lng: +bg.toFixed(6), p: prec };
   if (user && backend) { publish(pin); return; }
   try { localStorage.setItem(DRAFT, JSON.stringify(pin)); } catch (_) {}
   authBox.hidden = false; $("#saveBtn").hidden = true;
   track("login_prompt");
 };
-$("#delBtn").onclick = async () => {
-  try { await backend.deletePin(); setStatus(t("deleted")); track("pin_delete"); }
-  catch (e) { setStatus(t("saveFailed"), true); track("pin_delete_error", { code: e.code || "unknown" }); }
-};
-$("#googleBtn").onclick = async () => {
+async function deleteMyPin() {
+  if (!myPin || !confirm(t("deleteConfirmPin"))) return;
+  try { await backend.deletePin(); setStatus(t("deleted")); acctStatus(t("deleted")); track("pin_delete"); }
+  catch (e) { setStatus(t("saveFailed"), true); acctStatus(t("saveFailed"), true); track("pin_delete_error", { code: e.code || "unknown" }); }
+}
+$("#delBtn").onclick = deleteMyPin; $("#mpDel").onclick = deleteMyPin;
+// the same sign-in controls live in the pin sheet and in the account block; messages go to whichever was used
+const sayFor = el => el.closest(".account") ? acctStatus : setStatus;
+for (const b of document.querySelectorAll(".js-google")) b.onclick = async () => {
   if (!backend) return; loginMethod = "google"; track("login_start", { method: "google" });
   try { await backend.signInGoogle(); }
-  catch (e) { if (!/popup-closed|cancelled-popup/.test(e.code)) setStatus(t("authFailed"), true); track("login_error", { method: "google", code: e.code || "unknown" }); }
+  catch (e) { if (!/popup-closed|cancelled-popup/.test(e.code)) sayFor(b)(t("authFailed"), true); track("login_error", { method: "google", code: e.code || "unknown" }); }
 };
-$("#emailForm").onsubmit = async e => {
+for (const f of document.querySelectorAll(".js-email")) f.onsubmit = async e => {
   e.preventDefault(); if (!backend) return;
-  const email = $("#emailInput").value.trim(); track("login_start", { method: "email" });
-  try { await backend.sendEmailLink(email, lang); setStatus(t("linkSent", { email })); track("login_link_sent"); }
-  catch (err) { setStatus(t("authFailed"), true); track("login_error", { method: "email", code: err.code || "unknown" }); }
+  const email = f.querySelector("input").value.trim(); track("login_start", { method: "email" });
+  try { await backend.sendEmailLink(email, lang); sayFor(f)(t("linkSent", { email })); track("login_link_sent"); }
+  catch (err) { sayFor(f)(t("authFailed"), true); track("login_error", { method: "email", code: err.code || "unknown" }); }
 };
 $("#signOutBtn").onclick = () => { backend?.signOut(); track("logout"); };
 
@@ -476,7 +524,7 @@ tribes = initTribes({
   lang: () => lang, selected: () => selected, inScope: (lng, lat) => !area || area.test(lng, lat),
   user: () => user, myPin: () => myPin, backend: () => backend,
   openPinSheet: () => { openSheet(); $("#teamInput").focus(); },
-  openAuth: () => { openSheet(); authBox.hidden = false; $("#saveBtn").hidden = true; },
+  openAuth: () => { $("#acctLogin").hidden = false; if (phone.matches) document.body.classList.add("acct-open"); },
   setSheetOpen: open => document.body.classList.toggle("sheet-open", open || !sheet.hidden),
 });
 if (location.pathname.startsWith("/t/")) setView("tribes");
