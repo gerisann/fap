@@ -66,7 +66,7 @@
     <button class="textbtn more" id="moreTeams" hidden></button>
     <div class="foot">
       <label class="switch"><input type="checkbox" id="demoToggle" checked> <span data-i18n="demo"></span></label>
-      <span class="foot-links"><a class="privacy" href="/privacy" data-i18n="privacy"></a><button class="privacy" id="privacyBtn" data-i18n="cookies"></button></span>
+      <span class="foot-links"><a class="privacy" href="/privacy" data-i18n="privacy"></a><button class="privacy" id="privacyBtn" data-i18n="cookies"></button><button class="privacy" id="tourBtn" data-i18n="tourBtn"></button></span>
     </div>
   </div>
   <button class="grab" id="boardGrab" aria-expanded="true" aria-controls="boardBody" data-i18n-attr="aria-label:panelToggle"><span></span></button>
@@ -214,6 +214,13 @@
       </div>
     </div>
     <div class="step">
+      <div class="label" data-i18n="tribeDistrict"></div>
+      <div class="combo">
+        <input class="field" id="tcDistrict" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="tcDistrictOpts" disabled data-i18n-attr="placeholder:tribeDistrictPh;aria-label:tribeDistrict">
+        <ul id="tcDistrictOpts" role="listbox" hidden></ul>
+      </div>
+    </div>
+    <div class="step">
       <div class="label" data-i18n="tribeName"></div>
       <input class="field" id="tcName" maxlength="40" autocomplete="off" data-i18n-attr="placeholder:tribeNamePh;aria-label:tribeName">
     </div>
@@ -250,6 +257,19 @@
 </aside>
 
 <div class="pickhint" id="pickHint" hidden data-i18n="pickHint"></div>
+
+<div class="welcome" id="welcome" hidden>
+  <div class="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+    <div class="logo">tribemap<i>.</i></div>
+    <h2 id="welcomeTitle" data-i18n="welcomeTitle"></h2>
+    <ul class="welcome-list">
+      <li><span class="wl-n">1</span><span data-i18n="welcomeP1"></span></li>
+      <li><span class="wl-n">2</span><span data-i18n="welcomeP2"></span></li>
+      <li><span class="wl-n">3</span><span data-i18n="welcomeP3"></span></li>
+    </ul>
+    <button class="save" id="welcomeGo" data-i18n="welcomeGo"></button>
+  </div>
+</div>
 
 <div class="consent" id="consent" hidden role="dialog" aria-live="polite">
   <p><span data-i18n="consentText"></span> <a href="/privacy" data-i18n="privacyMore"></a></p>

@@ -261,11 +261,13 @@ service cloud.firestore {
       allow read: if true;
 
       allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['team', 'name', 'city', 'cityOsm', 'country', 'lat', 'lng', 'memberCount', 'createdAt', 'lastActivityAt'])
+        && request.resource.data.keys().hasOnly(['team', 'name', 'city', 'district', 'cityOsm', 'country', 'lat', 'lng', 'memberCount', 'createdAt', 'lastActivityAt'])
         && text(request.resource.data.team, 40)
         // optional custom name; the team is still shown next to it as a tag
         && (!('name' in request.resource.data) || (cleanText(request.resource.data.name, 40) && request.resource.data.name.trim().size() >= 3))
         && text(request.resource.data.city, 80)
+        // optional district / neighbourhood of a big city; then cityOsm (and so the id) is the district's OSM id
+        && (!('district' in request.resource.data) || text(request.resource.data.district, 80))
         && request.resource.data.country is string && request.resource.data.country.size() <= 80
         && request.resource.data.cityOsm.matches('^[NWR][0-9]{1,12}$')
         && tid == request.resource.data.cityOsm + '_' + request.resource.data.team.lower().replace('[^a-z0-9]+', '-')

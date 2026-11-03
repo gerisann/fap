@@ -42,7 +42,9 @@ export function initTribes(ctx) {
   const titleOf = tr => tr.name || tr.team;
   const membersText = n => t(n === 1 ? "membersOne" : "membersOther", { n: num(n) });
   const foundedText = tr => { const ms = tr.createdAt?.toMillis?.(); return ms ? t("founded", { date: new Intl.DateTimeFormat(ctx.locale(), { year: "numeric", month: "short" }).format(ms) }) : ""; };
-  const subOf = tr => [tr.city, membersText(tr.memberCount), foundedText(tr)].filter(Boolean).join(" · ");
+  // district tribes read "XIII. kerület, Budapest" / "Islington, London"
+  const placeOf = tr => tr.district ? tr.district + ", " + tr.city : tr.city;
+  const subOf = tr => [placeOf(tr), membersText(tr.memberCount), foundedText(tr)].filter(Boolean).join(" · ");
   function teamTag(team) { const s = document.createElement("span"); s.className = "team-tag"; s.textContent = team; return s; }
 
   /* ---------- data ---------- */
@@ -85,7 +87,7 @@ export function initTribes(ctx) {
       const byCity = new Map(); for (const tr of list) { const k = tr.cityOsm; byCity.set(k, [...(byCity.get(k) || []), tr]); }
       for (const group of byCity.values()) group.forEach((tr, i) => {
         const n = group.length, a = i / n * 2 * Math.PI - Math.PI / 2, r = n > 1 ? 26 + n * 3 : 0;
-        const el = document.createElement("button"); el.className = "tribe-mk" + (z < TRIBE_ZOOM_FULL ? " compact" : ""); el.title = titleOf(tr) + " · " + tr.city;
+        const el = document.createElement("button"); el.className = "tribe-mk" + (z < TRIBE_ZOOM_FULL ? " compact" : ""); el.title = titleOf(tr) + " · " + placeOf(tr);
         const d = document.createElement("span"); d.className = "dot"; d.style.background = ctx.colorOf(tr.team);
         const txt = document.createElement("span"); txt.className = "tm-text";
         const top = document.createElement("span"); top.className = "tm-top";
@@ -232,7 +234,7 @@ export function initTribes(ctx) {
     if (!profileLoaded) return;
     if (needProfile(join)) return;
     const why = nearReason(open);
-    if (!why) { gate("gateNear", "imHere", () => checkInHere(() => { gate(null); join(); }), { city: open.city }); return; }
+    if (!why) { gate("gateNear", "imHere", () => checkInHere(() => { gate(null); join(); }), { city: placeOf(open) }); return; }
     if (!(await teamSlotOk(open.team))) { gate("teamLimit"); return; }
     try {
       const r = await ctx.backend().joinTribe(open.id, open.team, profile.nick, refFor(open.id));
@@ -258,17 +260,24 @@ export function initTribes(ctx) {
     if (!open) return;
     const me = ctx.backend()?.currentUid();
     const url = location.origin + "/t/" + encodeURIComponent(open.id) + (me ? "?ref=" + encodeURIComponent(me) : "");
-    const title = titleOf(open) + " · " + open.city + " – TribeMap";
+    const title = titleOf(open) + " · " + placeOf(open) + " – TribeMap";
     try { if (navigator.share) await navigator.share({ title, url }); else { await navigator.clipboard.writeText(url); status(t("linkCopied")); } track("tribe_share", { team: open.team, on: !!me }); }
     catch (_) {}
   };
 
   /* ---------- create ---------- */
-  let pickedCity = null;
+  let pickedCity = null, pickedDistrict = null;
+  const districtField = $("#tcDistrict");
   const cityCombo = ctx.asyncCombo($("#tcCity"), $("#tcCityOpts"), {
     search: (q, signal) => ctx.searchAreas(q, "city", ctx.lang(), signal),
-    onInput: () => { pickedCity = null; $("#tcSave").disabled = true; },
-    onPick: c => { pickedCity = c; $("#tcSave").disabled = !c.osm; if (!c.osm) status(t("cityNoId"), true); },
+    onInput: () => { pickedCity = null; $("#tcSave").disabled = true; districtCombo.clear(); pickedDistrict = null; districtField.disabled = true; },
+    onPick: c => { pickedCity = c; $("#tcSave").disabled = !c.osm; districtField.disabled = !c.osm; if (!c.osm) status(t("cityNoId"), true); },
+  });
+  // optional: a district / neighbourhood of the picked city makes a tribe of its own next to the city one
+  const districtCombo = ctx.asyncCombo(districtField, $("#tcDistrictOpts"), {
+    search: (q, signal) => pickedCity ? ctx.searchDistricts(q, pickedCity, ctx.lang(), signal) : Promise.resolve([]),
+    onInput: () => { pickedDistrict = null; },
+    onPick: d => { pickedDistrict = d; },
   });
   function startCreate() {
     stopWatching(); open = null; feed.replaceChildren(); status(""); gate(null);
@@ -279,6 +288,7 @@ export function initTribes(ctx) {
     if (!ctx.user()) { $("#tsCreate").hidden = true; gate("gateSignIn", "signIn", () => { closeSheet(); ctx.openAuth(); }); return; }
     if (!pin) { $("#tsCreate").hidden = true; gate("gatePin", "cta", () => { closeSheet(); ctx.openPinSheet(); }); return; }
     $("#tsCreate").hidden = false; $("#tcTeam").textContent = pin.t; cityCombo.clear(); pickedCity = null; $("#tcSave").disabled = true; $("#tcName").value = "";
+    districtCombo.clear(); pickedDistrict = null; districtField.disabled = true;
     track("tribe_create_start");
   }
   $("#newTribeBtn").onclick = startCreate;
@@ -288,10 +298,11 @@ export function initTribes(ctx) {
     if (name && (name.length < 3 || name.length > 40)) { status(t("tribeNameInvalid"), true); return; }
     if (name && isProfane(name)) { status(t("profane"), true); track("tribe_name_blocked"); return; }
     if (needProfile(create)) return;
-    const fb = ctx.backend(), tid = fb.tribeId(pin.t, pickedCity.osm);
+    const place = pickedDistrict || pickedCity; // a district tribe takes the district's OSM id and centre
+    const fb = ctx.backend(), tid = fb.tribeId(pin.t, place.osm);
     if (tribes.some(x => x.id === tid)) { openTribe(tid, "exists"); return; }
-    const tr = { team: pin.t, name: name || null, city: pickedCity.name, cityOsm: pickedCity.osm, country: (pickedCity.sub || "").split(", ").pop() || "", lat: +pickedCity.lat.toFixed(4), lng: +pickedCity.lng.toFixed(4) };
-    if (!nearReason(tr)) { gate("gateNear", "imHere", () => checkInHere(() => { gate(null); create(); }), { city: tr.city }); return; }
+    const tr = { team: pin.t, name: name || null, city: pickedCity.name, district: pickedDistrict?.name || null, cityOsm: place.osm, country: (pickedCity.sub || "").split(", ").pop() || "", lat: +place.lat.toFixed(4), lng: +place.lng.toFixed(4) };
+    if (!nearReason(tr)) { gate("gateNear", "imHere", () => checkInHere(() => { gate(null); create(); }), { city: placeOf(tr) }); return; }
     if (!(await teamSlotOk(tr.team))) { gate("teamLimit"); return; }
     $("#tcSave").disabled = true;
     try {

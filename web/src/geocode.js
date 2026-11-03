@@ -30,6 +30,22 @@ export async function searchAreas(q, level, lang, signal) {
   }));
 }
 
+// districts (boroughs, e.g. "XIII. kerület") and neighbourhoods (suburbs) inside a picked city, for district tribes
+export async function searchDistricts(q, city, lang, signal) {
+  const base = [["q", q], ["limit", "8"], ["layer", "district"], ["lang", PLANG[lang] || "default"]];
+  let f = [];
+  if (city.extent) { const [a, b, c, d] = city.extent; f = await photon([...base, ["bbox", [a, d, c, b].join(",")]], signal); }
+  // a city's extent can be its core only (London → City of London): then anything within 40 km of its centre
+  if (!f.length) f = (await photon([...base, ["lat", String(city.lat)], ["lon", String(city.lng)]], signal)).filter(x => {
+    const [lng, lat] = x.geometry.coordinates, k = Math.cos(city.lat * Math.PI / 180);
+    return Math.hypot((lat - city.lat) * 111, (lng - city.lng) * 111 * k) <= 40;
+  });
+  return dedupe(f.filter(x => x.properties.osm_type && x.properties.osm_id).map(x => {
+    const p = x.properties;
+    return { name: p.name, sub: p.city || city.name, lng: x.geometry.coordinates[0], lat: x.geometry.coordinates[1], osm: p.osm_type + p.osm_id };
+  }));
+}
+
 export async function searchAddress(q, city, lang, signal) {
   const params = [["q", q + ", " + city.name], ["limit", "8"], ["layer", "house"], ["layer", "street"], ["lang", PLANG[lang] || "default"]];
   // Photon extent is [minLon, maxLat, maxLon, minLat]; bbox wants minLon,minLat,maxLon,maxLat

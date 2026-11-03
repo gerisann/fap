@@ -56,15 +56,15 @@ function longTail(rnd) {
   }).filter(Boolean);
 }
 
-export function makeDemo(n) {
+export function makeDemo(n, scale = 1) {
   const rnd = mulberry(20261102), out = [];
   const tw = CITIES.reduce((s, c) => s + c[3], 0);
   const gauss = () => { let u = 0, v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
-  const place = (t, lat0, lng0, s) => {
-    const lat = lat0 + gauss() * s * 0.7, lng = lng0 + gauss() * s / Math.cos(lat0 * Math.PI / 180);
+  const place = (t, lat0, lng0, s, w = 1) => {
+    const lat = Math.max(-80, Math.min(80, lat0 + gauss() * s * 0.7)), lng = ((lng0 + gauss() * s / Math.cos(lat0 * Math.PI / 180) + 540) % 360) - 180;
     const pr = rnd(), prec = pr < .5 ? "area" : pr < .8 ? "exact" : "city";
     const [bl, bg] = blur(lat, lng, prec, rnd);
-    out.push({ t, lat: bl, lng: bg, p: prec, demo: true });
+    out.push({ t, lat: bl, lng: bg, p: prec, demo: true, ...(w > 1 ? { w } : {}) });
   };
   for (const tm of longTail(rnd)) for (let i = 0; i < tm.fans; i++) place(tm.name, tm.lat, tm.lng, tm.spread * (0.35 + rnd() * 0.9));
   n = Math.max(0, n - out.length); // the total stays n
@@ -79,6 +79,12 @@ export function makeDemo(n) {
     const c = CITIES[ci], pool = pools[ci];
     let q = rnd() * pool.tot, ti = 0; while (q > pool.items[ti][1] && ti < pool.items.length - 1) { q -= pool.items[ti][1]; ti++; }
     place(pool.items[ti][0], c[1], c[2], c[4] * (0.35 + rnd() * 0.9));
+  }
+  // ×scale without ×scale points (the browser could not hold millions): every home fan gets one more point
+  // around a random demo city somewhere in the world, worth scale − 1 fans (w); all counts sum w
+  if (scale > 1) for (const p of out.slice()) {
+    const c = CITIES[Math.floor(rnd() * CITIES.length)];
+    place(p.t, c[1], c[2], 1 + rnd() * 2, scale - 1);
   }
   return out;
 }

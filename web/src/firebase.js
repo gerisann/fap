@@ -220,7 +220,7 @@ async function ledgerJoin(b, tid, team) {
 
 export async function createTribe(t, nick) {
   const tid = tribeId(t.team, t.cityOsm), b = writeBatch(db);
-  b.set(doc(db, "tribes", tid), { team: t.team, ...(t.name ? { name: t.name } : {}), city: t.city, cityOsm: t.cityOsm, country: t.country || "", lat: t.lat, lng: t.lng, memberCount: 1, createdAt: serverTimestamp(), lastActivityAt: serverTimestamp() });
+  b.set(doc(db, "tribes", tid), { team: t.team, ...(t.name ? { name: t.name } : {}), city: t.city, ...(t.district ? { district: t.district } : {}), cityOsm: t.cityOsm, country: t.country || "", lat: t.lat, lng: t.lng, memberCount: 1, createdAt: serverTimestamp(), lastActivityAt: serverTimestamp() });
   b.set(doc(db, "tribes", tid, "members", uid()), { nick, role: "captain", joinedAt: serverTimestamp() });
   await ledgerJoin(b, tid, t.team);
   await b.commit(); return tid;

@@ -389,3 +389,13 @@ test("a ledger without lastJoin (backfilled by hand) can still leave", async () 
   await env.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), "stats", "alice"), { lastJoin: deleteField() }));
   await assertSucceeds(captainLeave("alice", tid, null));
 });
+
+test("district tribes: next to the city tribe, keyed by the district's OSM id", async () => {
+  await seedTribe();                                                              // Ferencváros · Budapest
+  const XIII = { ...BUD, cityOsm: "R1605916", lat: 47.5296, lng: 19.0716 };
+  await assertFails(createTribe("alice", "Ferencváros", XIII, undefined, tidOf("Ferencváros", XIII), { district: "x".repeat(81) }));
+  await assertFails(createTribe("alice", "Ferencváros", XIII, undefined, tidOf("Ferencváros", XIII), { district: "XIII. kerület", quarter: "?" }));
+  await assertSucceeds(createTribe("alice", "Ferencváros", XIII, undefined, tidOf("Ferencváros", XIII), { district: "XIII. kerület" }));
+  const t = (await getDoc(doc(db("alice"), "tribes", tidOf("Ferencváros", XIII)))).data();
+  if (t.district !== "XIII. kerület" || t.city !== "Budapest") throw new Error(JSON.stringify(t));
+});

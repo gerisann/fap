@@ -6,12 +6,13 @@ import { TEAMS as CURATED } from "./data/teams.js";
 import { API_TEAMS } from "./data/teams-api.js";
 import { blur, makeDemo } from "./data/demo.js";
 import { loadStyle } from "./basemap.js";
-import { searchCities, searchAddress, searchAreas } from "./geocode.js";
+import { searchCities, searchAddress, searchAreas, searchDistricts } from "./geocode.js";
 import { placeGeometry, circle, distKm, bbox, contains } from "./area.js";
 import { initTribes, validUsername, usernameProblem } from "./tribes.js";
 import { isProfane } from "./profanity.js";
 import { todaysMatches, cheerOpen } from "./fixtures.js";
 import { asyncCombo } from "./combo.js";
+import { runTour } from "./tour.js";
 import { t, num, lang, locale, applyDom, setLang, onLangChange } from "./i18n.js";
 import { track, initAnalytics, consent, setConsent } from "./analytics.js";
 
@@ -30,7 +31,7 @@ const aliases = { "fradi": "Ferencváros", "ftc": "Ferencváros", "barca": "FC B
 function hashColor(s) { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `hsl(${h % 360} 70% 58%)`; }
 function canonical(name) { const k = name.trim().toLowerCase(); const m = teamMeta.get(k) || teamMeta.get((aliases[k] || "").toLowerCase()) || teamMeta.get((teamByFold.get(fold(k)) || "").toLowerCase()); return m ? m.name : name.trim().replace(/\s+/g, " ").slice(0, 40); }
 function colorOf(name) { const m = teamMeta.get(name.toLowerCase()); return m && m.color ? m.color : hashColor(name); }
-const DEMO = makeDemo(24000);
+const DEMO = makeDemo(24000, 100); // 24 000 home points ×100 fans: see makeDemo()
 
 /* ---------- state ---------- */
 const MAX_TEAMS = 5;
@@ -97,15 +98,16 @@ function applyTheme(next) {
 /* two clustered sources, both drawn as team-share donuts: "all" (top 40 teams) and "sel" (the ≤5 picked teams).
    Everything is scoped to the chosen area first. */
 // m: 1 for my own pin, which is drawn as a separate map pin instead of a dot
-function fc(arr) { return { type: "FeatureCollection", features: arr.map(p => ({ type: "Feature", properties: { t: p.t, c: colorOf(p.t), p: p.p, d: p.demo ? 1 : 0, m: p === myPin ? 1 : 0 }, geometry: { type: "Point", coordinates: [p.lng, p.lat] } })) }; }
-function keyProps(keys) { const props = {}; keys.forEach((tm, i) => { props["k" + i] = ["+", ["case", ["==", ["get", "t"], tm], 1, 0]]; }); return props; }
+// w: how many fans a point stands for (1; the scaled demo's world points stand for 99). Every count sums w.
+function fc(arr) { return { type: "FeatureCollection", features: arr.map(p => ({ type: "Feature", properties: { t: p.t, c: colorOf(p.t), p: p.p, d: p.demo ? 1 : 0, m: p === myPin ? 1 : 0, w: p.w || 1 }, geometry: { type: "Point", coordinates: [p.lng, p.lat] } })) }; }
+function keyProps(keys) { const props = { n: ["+", ["get", "w"]] }; keys.forEach((tm, i) => { props["k" + i] = ["+", ["case", ["==", ["get", "t"], tm], ["get", "w"], 0]]; }); return props; }
 function addClusterSource(id, data, keys) {
   if (map.getLayer(id + "-c")) map.removeLayer(id + "-c");
   if (map.getLayer(id + "-u")) map.removeLayer(id + "-u");
   if (map.getSource(id)) map.removeSource(id);
   map.addSource(id, { type: "geojson", data, cluster: true, clusterRadius: 48, clusterMaxZoom: 15, clusterProperties: keyProps(keys) });
   map.addLayer({ id: id + "-c", type: "circle", source: id, filter: ["has", "point_count"], paint: {
-    "circle-color": "rgba(0,0,0,0)", "circle-radius": ["step", ["get", "point_count"], 12, 10, 15, 50, 19, 200, 24, 1000, 30, 4000, 37] } });
+    "circle-color": "rgba(0,0,0,0)", "circle-radius": ["step", ["get", "n"], 12, 10, 15, 50, 19, 200, 24, 1000, 30, 4000, 37, 40000, 42, 400000, 46] } });
   map.addLayer({ id: id + "-u", type: "circle", source: id, filter: ["all", ["!", ["has", "point_count"]], ["!=", ["get", "m"], 1]], paint: {
     "circle-color": ["get", "c"], "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3.5, 14, 7],
     "circle-stroke-color": ["case", ["==", ["get", "d"], 0], P().accent, P().paper], "circle-stroke-width": ["case", ["==", ["get", "d"], 0], 2.5, 1.2] } });
@@ -113,14 +115,14 @@ function addClusterSource(id, data, keys) {
 function rebuild() {
   if (!ready()) return;
   const pts = scoped();
-  const groups = new Map(); for (const p of pts) groups.set(p.t, (groups.get(p.t) || 0) + 1);
+  let total = 0; const groups = new Map(); for (const p of pts) { const w = p.w || 1; total += w; groups.set(p.t, (groups.get(p.t) || 0) + w); }
   const data = fc(pts);
   map.getSource("heat").setData(data);
   const top = [...groups.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40).map(x => x[0]);
   if (top.join("|") !== topKeys.join("|") || !map.getSource("all")) { topKeys = top; addClusterSource("all", data, top); }
   else map.getSource("all").setData(data);
   updateSel(pts);
-  applyVisibility(); renderStats(groups, pts.length); scheduleLabels();
+  applyVisibility(); renderStats(groups, total); scheduleLabels();
 }
 function updateSel(pts) {
   const set = new Set(selected);
@@ -162,10 +164,10 @@ for (const src of ["all", "sel"]) for (const L of ["-c", "-u"]) {
 let labels = new Map(), labelTimer = 0;
 function scheduleLabels() { if (labelTimer) return; labelTimer = setTimeout(() => { labelTimer = 0; updateLabels(); }, 60); }
 function clearLabels() { for (const m of labels.values()) m.remove(); labels = new Map(); }
-function fmt(n) { return n >= 10000 ? Math.round(n / 1000) + "k" : n >= 1000 ? (n / 1000).toFixed(1).replace(".0", "") + "k" : String(n); }
-function radiusFor(n) { return n < 10 ? 12 : n < 50 ? 15 : n < 200 ? 19 : n < 1000 ? 24 : n < 4000 ? 30 : 37; }
+function fmt(n) { return n >= 1e6 ? (n / 1e6).toFixed(1).replace(".0", "") + "M" : n >= 10000 ? Math.round(n / 1000) + "k" : n >= 1000 ? (n / 1000).toFixed(1).replace(".0", "") + "k" : String(n); }
+function radiusFor(n) { return n < 10 ? 12 : n < 50 ? 15 : n < 200 ? 19 : n < 1000 ? 24 : n < 4000 ? 30 : n < 40000 ? 37 : n < 400000 ? 42 : 46; }
 function donut(props, keys) {
-  const n = props.point_count, r = radiusFor(n) + 3, w = Math.max(4, r * .22), R = r - w / 2, C = 2 * Math.PI * R;
+  const n = props.n ?? props.point_count, r = radiusFor(n) + 3, w = Math.max(4, r * .22), R = r - w / 2, C = 2 * Math.PI * R;
   const parts = keys.map((tm, i) => [colorOf(tm), props["k" + i] || 0]);
   const known = parts.reduce((s, x) => s + x[1], 0); parts.push([OTHER, Math.max(0, n - known)]);
   let off = 0, segs = "";
@@ -225,7 +227,8 @@ function setupLayers() {
   map.addLayer({ id: "cheers-dot", type: "circle", source: "cheers", paint: { "circle-color": ["get", "c"], "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 2.5, 8, 5], "circle-stroke-color": "#fff", "circle-stroke-width": 1 } });
   map.addSource("heat", { type: "geojson", data: fc([]) });
   map.addLayer({ id: "heatL", type: "heatmap", source: "heat", layout: { visibility: "none" }, paint: {
-    "heatmap-weight": ["interpolate", ["linear"], ["zoom"], 1, .01, 5, .04, 9, .2, 13, 1],
+    // density only, not w: the demo's weighted world points would burn the map; halved for its 2× points
+    "heatmap-weight": ["interpolate", ["linear"], ["zoom"], 1, .005, 5, .02, 9, .1, 13, .5],
     "heatmap-intensity": 1,
     "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 1, 10, 5, 22, 10, 30, 14, 36],
     "heatmap-opacity": .85,
@@ -675,7 +678,7 @@ $("#signOutBtn").onclick = () => { backend?.signOut(); track("logout"); };
 
 /* ---------- tribes ---------- */
 tribes = initTribes({
-  map, maplibregl, t, num, track, colorOf, locale, asyncCombo, searchAreas,
+  map, maplibregl, t, num, track, colorOf, locale, asyncCombo, searchAreas, searchDistricts,
   lang: () => lang, selected: () => selected, inScope: (lng, lat) => !area || area.test(lng, lat),
   user: () => user, myPin: () => myPin, backend: () => backend, flash: flashHint,
   openPinSheet: () => { openSheet(); $("#teamInput").focus(); },
@@ -727,3 +730,27 @@ $("#consentNo").onclick = () => answer("denied");
 $("#privacyBtn").onclick = () => { banner.hidden = false; };
 if (!consent()) banner.hidden = false;
 initAnalytics({ lang, theme, consent_analytics: consent() || "unset" });
+
+/* ---------- first visit: a short welcome, once per browser (not on the way back from an e-mail sign-in link),
+   then the guided tour; the footer's "Tour" button replays it ---------- */
+// on phones the board steps open the board first, the rest fold it away
+const boardStep = (sel, text) => ({ el: () => sel, text, before: () => { if (phone.matches) setBoard(true, false); } });
+const TOUR = [
+  boardStep(".stats", "tourStats"),
+  boardStep(".seg3", "tourViews"),
+  boardStep("#areaSeg", "tourArea"),
+  boardStep("#teamList", "tourTeams"),
+  { el: () => "#openSheet", text: "tourCta", before: () => { if (phone.matches) setBoard(false, false); } },
+  { el: () => phone.matches ? "#acctBtn" : "#account", text: "tourAccount" },
+];
+const startTour = () => { closeAccount(); runTour(TOUR, { t, track }); };
+$("#tourBtn").onclick = startTour;
+(() => {
+  let seen = false; try { seen = localStorage.getItem("tm.welcome") === "1"; } catch (_) {}
+  if (seen || new URLSearchParams(location.search).has("signin")) return;
+  const w = $("#welcome"), go = $("#welcomeGo");
+  const esc = e => { if (e.key === "Escape") close(false); };
+  const close = tour => { w.hidden = true; document.removeEventListener("keydown", esc); try { localStorage.setItem("tm.welcome", "1"); } catch (_) {} track("welcome_close"); if (tour) startTour(); };
+  w.hidden = false; go.onclick = () => close(true); document.addEventListener("keydown", esc); go.focus();
+  track("welcome_show");
+})();

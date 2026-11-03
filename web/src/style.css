@@ -318,6 +318,30 @@ a.privacy{text-decoration:none}
   background:var(--paper);border-radius:var(--r-md);box-shadow:var(--shadow);padding:18px;display:flex;flex-direction:column;gap:14px}
 .consent p{margin:0;font-size:13px;line-height:1.45}
 .consent-actions{display:flex;gap:8px}
+
+/* first-visit welcome: over everything, the consent card waits underneath */
+.welcome{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:16px;box-sizing:border-box;
+  background:color-mix(in srgb,var(--space) 45%,transparent);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);animation:wl-in .25s ease-out}
+.welcome[hidden]{display:none}
+.welcome-card{width:100%;max-width:400px;box-sizing:border-box;background:var(--paper);color:var(--ink);border-radius:var(--r-lg);box-shadow:var(--shadow);
+  padding:30px 28px 24px;display:flex;flex-direction:column;gap:20px}
+.welcome-card .logo{font-size:24px}
+.welcome-card h2{margin:0;font:800 28px/1.05 var(--f-display);letter-spacing:-.035em}
+.welcome-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
+.welcome-list li{display:flex;gap:12px;align-items:flex-start;font-size:15px;line-height:1.4}
+.wl-n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--wash);color:var(--cobalt);display:grid;place-items:center;font:700 12px/1 var(--f-display)}
+.welcome-card .save{margin-top:4px}
+@keyframes wl-in{from{opacity:0}to{opacity:1}}
+
+/* guided tour: a lit-up hole over the explained part, the rest dimmed; the tip card sits next to it */
+.tour{position:fixed;inset:0;z-index:21}
+.tour-hole{position:fixed;border-radius:var(--r-md);box-shadow:0 0 0 9999px color-mix(in srgb,var(--space) 62%,transparent),0 0 0 2px var(--cobalt);
+  transition:left .25s,top .25s,width .25s,height .25s;pointer-events:none}
+.tour-tip{position:fixed;box-sizing:border-box;background:var(--paper);color:var(--ink);border-radius:var(--r-md);box-shadow:var(--shadow);padding:16px 16px 12px;
+  display:flex;flex-direction:column;gap:12px;transition:left .25s,top .25s}
+.tour-text{margin:0;font-size:14px;line-height:1.45}
+.tour-foot{display:flex;align-items:center;gap:6px}
+.tour-n{font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums;margin-right:auto}
 .consent-actions button{flex:1;border:0;border-radius:999px;padding:11px 0;font-weight:600;font-size:13px}
 .consent-actions .yes{background:var(--ink);color:var(--paper)}
 .consent-actions .no{background:var(--wash);color:var(--ink)}
