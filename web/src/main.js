@@ -69,13 +69,16 @@ geo.on("geolocate", () => track("geolocate"));
 map.dragRotate.disable(); map.touchZoomRotate.disableRotation();
 if (import.meta.env.DEV) window.__map = map;
 
-let ready = false, topKeys = [], styleSeq = 0;
+let topKeys = [], styleSeq = 0;
+// read from the map, not kept in a flag: MapLibre itself swaps the style (worker restart after the tab comes back,
+// WebGL context loss / restore), and our sources are gone until it has rebuilt it. "heat" is added last in setupLayers.
+const ready = () => !!map.getSource("heat");
 const OTHER = "var(--wash-2)";
 async function reloadStyle() {
   const seq = ++styleSeq;
   const s = await loadStyle(theme, lang, P()).catch(() => null);
   if (!s || seq !== styleSeq) return;
-  ready = false; clearLabels(); map.setStyle(s, { diff: false });
+  clearLabels(); map.setStyle(s, { diff: false });
 }
 function applyMapTheme() {
   const p = P();
@@ -108,7 +111,7 @@ function addClusterSource(id, data, keys) {
     "circle-stroke-color": ["case", ["==", ["get", "d"], 0], P().accent, P().paper], "circle-stroke-width": ["case", ["==", ["get", "d"], 0], 2.5, 1.2] } });
 }
 function rebuild() {
-  if (!ready) return;
+  if (!ready()) return;
   const pts = scoped();
   const groups = new Map(); for (const p of pts) groups.set(p.t, (groups.get(p.t) || 0) + 1);
   const data = fc(pts);
@@ -124,7 +127,7 @@ function updateSel(pts) {
   addClusterSource("sel", fc((pts || scoped()).filter(p => set.has(p.t))), selected);
 }
 function applyVisibility() {
-  if (!ready) return;
+  if (!ready()) return;
   const all = view === "pins" && !selected.length, sel = view === "pins" && !!selected.length;
   for (const [id, on] of [["all", all], ["sel", sel]]) for (const L of ["-c", "-u"]) if (map.getLayer(id + L)) map.setLayoutProperty(id + L, "visibility", on ? "visible" : "none");
   map.setLayoutProperty("heatL", "visibility", view === "heat" ? "visible" : "none");
@@ -174,7 +177,7 @@ function donut(props, keys) {
   return el;
 }
 function updateLabels() {
-  if (!ready) return;
+  if (!ready()) return;
   const next = new Map();
   const src = view !== "pins" ? null : selected.length ? "sel" : "all";
   if (src) {
@@ -211,7 +214,8 @@ map.on("moveend", e => {
 
 function areaFC() { return { type: "FeatureCollection", features: area ? [{ type: "Feature", properties: {}, geometry: area.geom }] : [] }; }
 function setupLayers() {
-  if (map.getSource("heat")) return;
+  // rebuilt by MapLibre from a snapshot: our sources are back with their old data, catch up on what changed meanwhile
+  if (ready()) { map.getSource("area").setData(areaFC()); map.getSource("cheers").setData(cheersFC); rebuild(); return; }
   map.addSource("area", { type: "geojson", data: areaFC() });
   map.addLayer({ id: "area-fill", type: "fill", source: "area", paint: { "fill-color": P().accent, "fill-opacity": .06 } });
   map.addLayer({ id: "area-line", type: "line", source: "area", paint: { "line-color": P().accent, "line-width": 1.6, "line-opacity": .8 } });
@@ -226,7 +230,7 @@ function setupLayers() {
     "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 1, 10, 5, 22, 10, 30, 14, 36],
     "heatmap-opacity": .85,
     "heatmap-color": heatRamp() } });
-  ready = true; topKeys = []; rebuild(); applyMapTheme();
+  topKeys = []; rebuild(); applyMapTheme();
 }
 map.on("style.load", setupLayers);
 if (map.isStyleLoaded()) setupLayers();
@@ -266,7 +270,7 @@ function renderFilter() {
 function flashHint(msg) { const h = $("#teamHint"); h.textContent = msg; h.hidden = false; clearTimeout(hintTimer); hintTimer = setTimeout(() => { h.hidden = true; }, 2600); }
 function setSelected(list, source) {
   selected = list;
-  if (ready) { updateSel(); applyVisibility(); }
+  if (ready()) { updateSel(); applyVisibility(); }
   if (lastGroups) renderStats(lastGroups, lastTotal);
   track("team_filter", { teams: selected.join("|") || "(none)", count: selected.length, source });
 }
@@ -284,7 +288,7 @@ $("#teamSearch").addEventListener("input", e => {
 
 /* ---------- area scope: world / country / city (OSM outline) / radius around a dropped point ---------- */
 let areaMode = "world", radiusKm = 25, radiusCenter = null, radiusMarker = null, areaCtrl = null, radiusTimer = 0;
-function setArea(next) { area = next; if (ready) { map.getSource("area")?.setData(areaFC()); rebuild(); } }
+function setArea(next) { area = next; if (ready()) { map.getSource("area")?.setData(areaFC()); rebuild(); } }
 function setAreaMode(m) {
   areaMode = m;
   for (const b of document.querySelectorAll("#areaSeg button")) b.setAttribute("aria-pressed", String(b.dataset.area === m));
