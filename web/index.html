@@ -66,7 +66,7 @@
     <button class="textbtn more" id="moreTeams" hidden></button>
     <div class="foot">
       <label class="switch"><input type="checkbox" id="demoToggle" checked> <span data-i18n="demo"></span></label>
-      <button class="privacy" id="privacyBtn" data-i18n="privacy"></button>
+      <span class="foot-links"><a class="privacy" href="/privacy" data-i18n="privacy"></a><button class="privacy" id="privacyBtn" data-i18n="cookies"></button></span>
     </div>
   </div>
   <button class="grab" id="boardGrab" aria-expanded="true" aria-controls="boardBody" data-i18n-attr="aria-label:panelToggle"><span></span></button>
@@ -113,6 +113,10 @@
     <div class="mytribes" id="myTribesBox" hidden>
       <div class="label" data-i18n="myTribes"></div>
       <ul class="teams" id="myTribesList"></ul>
+    </div>
+    <div class="acct-legal">
+      <button class="textbtn" id="exportBtn" data-i18n="exportData"></button>
+      <button class="textbtn danger" id="deleteAcctBtn" data-i18n="deleteAccount"></button>
     </div>
   </div>
 
@@ -243,7 +247,7 @@
 <div class="pickhint" id="pickHint" hidden data-i18n="pickHint"></div>
 
 <div class="consent" id="consent" hidden role="dialog" aria-live="polite">
-  <p data-i18n="consentText"></p>
+  <p><span data-i18n="consentText"></span> <a href="/privacy" data-i18n="privacyMore"></a></p>
   <div class="consent-actions"><button class="no" id="consentNo" data-i18n="consentReject"></button><button class="yes" id="consentYes" data-i18n="consentAccept"></button></div>
 </div>
 </body>

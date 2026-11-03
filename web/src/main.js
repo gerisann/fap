@@ -558,6 +558,36 @@ function renderMyTribes() {
   if (!ul.children.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = t("noMyTribes"); ul.append(li); }
 }
 
+/* ---------- GDPR: download my data, delete my account ---------- */
+$("#exportBtn").onclick = async () => {
+  if (!backend || !user) return;
+  acctStatus(t("exporting"));
+  try {
+    const data = await backend.exportMyData();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    a.download = "tribemap-" + new Date().toISOString().slice(0, 10) + ".json"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    acctStatus(t("exported")); track("data_export");
+  } catch (e) { acctStatus(t("saveFailed"), true); track("data_export_error", { code: e.code || "unknown" }); }
+};
+$("#deleteAcctBtn").onclick = async () => {
+  if (!backend || !user) return;
+  // removing the sign-in itself needs a fresh sign-in: check first, so data and account go together
+  if (!backend.recentlySignedIn()) { acctStatus(t("deleteNeedsLogin"), true); track("account_delete_relogin"); return; }
+  const word = t("deleteWord");
+  if ((prompt(t("deleteConfirmAll", { word })) || "").trim().toUpperCase() !== word) return;
+  try {
+    await backend.deleteMyAccount(step => acctStatus(t("deleting", { step: t("step_" + step) })));
+    for (const k of ["tm.draft", "tm.email", "tm.board"]) try { localStorage.removeItem(k); } catch (_) {}
+    try { sessionStorage.removeItem("tm.ref"); } catch (_) {}
+    acctStatus(t("accountDeleted")); track("account_delete");
+  } catch (e) {
+    acctStatus(t(e.code === "auth/requires-recent-login" ? "deleteNeedsLogin" : "deleteFailed"), true);
+    track("account_delete_error", { code: e.code || "unknown" });
+  }
+};
+
 /* optional username (also the tribe nickname): unique, English letters, digits, - and _ */
 function openUnameForm() { $("#unameForm").hidden = false; $("#unameAdd").hidden = true; const i = $("#unameInput"); i.value = profile?.nick && validUsername(profile.nick) ? profile.nick : ""; i.focus(); }
 $("#unameAdd").onclick = openUnameForm; $("#unameEdit").onclick = openUnameForm;

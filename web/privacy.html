@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TribeMap – Adatvédelem / Privacy</title>
+<meta name="robots" content="index,follow">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap">
+<script>
+(()=>{let t,l;try{t=localStorage.getItem("tm.theme");l=localStorage.getItem("tm.lang");}catch(_){}if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
+const q=new URLSearchParams(location.search).get("lang");l=q||l||(navigator.language||"en").slice(0,2);
+const d=document.documentElement;d.dataset.theme=t;d.lang=l==="hu"?"hu":"en";d.dataset.req=l;})();
+</script>
+<style>
+:root{--ink:#16181c;--paper:#ffffff;--cobalt:#3355ff;--mute:#8b9099;--wash:color-mix(in srgb,var(--mute) 12%,var(--paper));color-scheme:light}
+:root[data-theme="dark"]{--ink:#eceef1;--paper:#1b1d21;--cobalt:#6680ff;--mute:#7c828b;color-scheme:dark}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#eceef1;--paper:#1b1d21;--cobalt:#6680ff;--mute:#7c828b;color-scheme:dark}}
+body{margin:0;background:var(--wash);color:var(--ink);font:15px/1.6 "Instrument Sans","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:760px;margin:0 auto;padding:32px 20px 64px}
+.card{background:var(--paper);border-radius:26px;padding:28px 28px 20px;box-shadow:0 1px 2px rgba(22,24,28,.06),0 14px 44px -12px rgba(22,24,28,.22)}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;gap:12px}
+.logo{font:800 26px/1 "Bricolage Grotesque",sans-serif;letter-spacing:-.04em;color:var(--ink);text-decoration:none}.logo i{font-style:normal;color:var(--cobalt)}
+.langs a{color:var(--mute);text-decoration:none;font-weight:600;font-size:13px;margin-left:10px}.langs a[aria-current]{color:var(--cobalt)}
+h1{font:800 30px/1.1 "Bricolage Grotesque",sans-serif;letter-spacing:-.03em;margin:8px 0 4px}
+h2{font:800 19px/1.2 "Bricolage Grotesque",sans-serif;margin:28px 0 8px}
+.meta{color:var(--mute);font-size:13px;margin:0 0 18px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:6px 0}
+th,td{text-align:left;vertical-align:top;padding:9px 10px}
+th{color:var(--mute);font-weight:600;font-size:12px}
+tr:nth-child(even) td{background:var(--wash)}
+td:first-child{font-weight:600}
+.table{overflow-x:auto;border-radius:12px}
+ul{padding-left:20px}li{margin:4px 0}
+a{color:var(--cobalt)}
+.note{background:var(--wash);border-radius:16px;padding:12px 16px;font-size:13.5px}
+[data-l]{display:none}
+html[lang="hu"] [data-l="hu"],html[lang="en"] [data-l="en"]{display:block}
+@media (max-width:600px){.card{padding:22px 16px 14px;border-radius:22px}h1{font-size:25px}}
+</style>
+</head>
+<body>
+<main>
+<div class="card">
+  <div class="top">
+    <a class="logo" href="/">tribemap<i>.</i></a>
+    <nav class="langs"><a href="?lang=hu" data-set="hu">HU</a><a href="?lang=en" data-set="en">EN</a><a href="?lang=es" data-set="es">ES</a></nav>
+  </div>
+
+  <!-- ================= MAGYAR ================= -->
+  <article data-l="hu">
+    <h1>Adatvédelmi tájékoztató</h1>
+    <p class="meta">Hatályos: 2026. november 3.</p>
+
+    <p>A TribeMap egy szurkolói világtérkép. Úgy építettük fel, hogy <b>a lehető legkevesebb adatot kezeljük</b>, és ami nyilvános, az se legyen hozzád köthető: a térképen csak a csapat és egy elmosott pont látszik, név soha.</p>
+
+    <h2>1. Az adatkezelő</h2>
+    <p>A TribeMap üzemeltetője. Kapcsolat adatvédelmi ügyekben: <a href="mailto:support@tribemap.com">support@tribemap.com</a></p>
+
+    <h2>2. Milyen adatokat kezelünk, miért és meddig?</h2>
+    <div class="table"><table>
+      <tr><th>Adat</th><th>Cél</th><th>Jogalap (GDPR 6. cikk)</th><th>Meddig</th></tr>
+      <tr><td>E-mail-cím, belső azonosító, belépési mód és időpontok</td><td>Belépés; egy fiók = egy pin</td><td>Szerződés teljesítése – (1) b)</td><td>A fiók törléséig</td></tr>
+      <tr><td>Felhasználónév (opcionális)</td><td>Megjelenés a tribe-okban, a pinen</td><td>Szerződés – (1) b)</td><td>Törlésig. A jelentések miatt elrejtett név foglalt marad, de a fiók törlése után már nem köthető hozzád.</td></tr>
+      <tr><td>Pin: csapat, elmosott koordináta, pontosság, időpont</td><td>A szurkolói térkép</td><td>Hozzájárulás – (1) a): te adod meg, te törlöd</td><td>Amíg nem törlöd</td></tr>
+      <tr><td>„Itt vagyok most” jelzés: városszintű pont, időpont</td><td>Közeli tribe-ba lépés utazás közben</td><td>Hozzájárulás – (1) a)</td><td>72 óráig érvényes, a következő jelzés felülírja, a fiók törlésével törlődik. Csak te látod.</td></tr>
+      <tr><td>Tribe-tagságok, posztok, válaszok, szurkolások, XP</td><td>A közösségi funkciók</td><td>Szerződés – (1) b)</td><td>A fiók törléséig. A meccsek szurkolói számlálója névtelen összesítésként megmarad.</td></tr>
+      <tr><td>Általad tett jelentések</td><td>Moderálás, visszaélések kezelése</td><td>Jogos érdek – (1) f)</td><td>Nem nyilvános, a moderáláshoz megmarad, nevet nem tartalmaz.</td></tr>
+      <tr><td>Analitika: oldalhasználat, kattintások, eszköz, hozzávetőleges hely (IP alapján), munkamenet-felvétel</td><td>A térkép fejlesztése</td><td>Hozzájárulás – (1) a); elutasításkor csak süti nélküli, összesített mérés</td><td>Google Analytics: 14 hónap. Microsoft Clarity: a Microsoft saját megőrzési szabályai szerint.</td></tr>
+      <tr><td>A böngésződben tárolt beállítások (téma, nyelv, hozzájárulás, félkész pin)</td><td>Az oldal működése</td><td>Jogos érdek / szükséges működés</td><td>Amíg nem törlöd a böngészőben</td></tr>
+    </table></div>
+    <p>A pin helyét <b>a te eszközödön mossuk el mentés előtt</b> (környék: 250–600 m, város: kb. 5 km-es rács), így a pontos helyed hozzánk sem jut el, kivéve, ha a „Pontos” beállítást választod. A munkamenet-felvételeken a bejelölő panel és minden beviteli mező maszkolva van, a mérésbe koordináta, azonosító és e-mail-cím soha nem kerül.</p>
+
+    <h2>3. Kik férnek hozzá? (adatfeldolgozók és szolgáltatások)</h2>
+    <ul>
+      <li><b>Google</b> (Firebase belépés, Firestore adatbázis az EU-ban, tárhely; Google Analytics, Tag Manager; Google Fonts betűtípusok – ehhez a böngésződ IP-címe eljut a Google-hoz).</li>
+      <li><b>Microsoft</b> – Clarity (hőtérkép, munkamenet-felvétel), csak hozzájárulással.</li>
+      <li><b>OpenFreeMap</b> – térképcsempék (a kéréssel az IP-címed).</li>
+      <li><b>komoot Photon</b> – város- és címkeresés: a beírt keresőszöveg és az IP-címed.</li>
+      <li><b>OpenStreetMap Foundation (Nominatim)</b> – a kiválasztott ország vagy város körvonala.</li>
+      <li><b>GitHub</b> – a napi meccslista kiszolgálása (személyes adat nélkül, a kéréssel az IP-címed).</li>
+      <li><b>API-Football</b> – a meccslistát a mi ütemezett feladatunk kéri le; rólad nem kap adatot.</li>
+    </ul>
+    <p>Egyes szolgáltatók (Google, Microsoft, GitHub) az Egyesült Államokban is kezelhetnek adatot; ez az EU–USA adatvédelmi keretrendszer és a szolgáltatók általános szerződési feltételei alapján történik.</p>
+
+    <h2>4. A jogaid</h2>
+    <ul>
+      <li><b>Hozzáférés és hordozhatóság:</b> Fiók → „Adataim letöltése” – minden adatodat letöltheted JSON-fájlban.</li>
+      <li><b>Helyesbítés:</b> a pinedet és a felhasználónevedet bármikor módosíthatod.</li>
+      <li><b>Törlés:</b> Fiók → „Fiókom törlése” – a fiókod és minden hozzá tartozó adat azonnal törlődik.</li>
+      <li><b>Hozzájárulás visszavonása:</b> „Sütik” gomb a bal oldali panel alján; a pinedet bármikor törölheted.</li>
+      <li><b>Tiltakozás, korlátozás:</b> írj a <a href="mailto:support@tribemap.com">support@tribemap.com</a> címre; 30 napon belül válaszolunk.</li>
+      <li><b>Panasz:</b> Nemzeti Adatvédelmi és Információszabadság Hatóság (NAIH), 1055 Budapest, Falk Miksa utca 9–11., <a href="https://naih.hu">naih.hu</a>.</li>
+    </ul>
+
+    <h2>5. Korhatár</h2>
+    <p>A belépés és a közösségi funkciók 16 éves kortól használhatók.</p>
+
+    <h2>6. Biztonság</h2>
+    <p>Titkosított kapcsolat (HTTPS), szigorú hozzáférési szabályok az adatbázisban (mindenki csak a saját adatait írhatja), az API-kulcsok a böngészőben nem jelennek meg.</p>
+
+    <h2>7. Változások</h2>
+    <p>Ha a tájékoztató lényegesen változik, az oldalon jelezzük. A fenti dátum mutatja a legutóbbi változatot.</p>
+  </article>
+
+  <!-- ================= ENGLISH ================= -->
+  <article data-l="en">
+    <p class="note" id="esNote" hidden>Este aviso aún no está disponible en español; a continuación encontrarás la versión en inglés.</p>
+    <h1>Privacy notice</h1>
+    <p class="meta">Effective: 3 November 2026</p>
+
+    <p>TribeMap is a world map of football fans. It is built to <b>handle as little data as possible</b>, and what is public cannot be tied to you: the map only shows a team and a blurred point, never a name.</p>
+
+    <h2>1. Controller</h2>
+    <p>The operator of TribeMap. Privacy contact: <a href="mailto:support@tribemap.com">support@tribemap.com</a></p>
+
+    <h2>2. What we process, why, and for how long</h2>
+    <div class="table"><table>
+      <tr><th>Data</th><th>Purpose</th><th>Legal basis (GDPR Art. 6)</th><th>Retention</th></tr>
+      <tr><td>Email address, internal ID, sign-in method and times</td><td>Sign-in; one account = one pin</td><td>Contract – (1)(b)</td><td>Until you delete your account</td></tr>
+      <tr><td>Username (optional)</td><td>Shown in tribes and on your pin</td><td>Contract – (1)(b)</td><td>Until deleted. A name hidden after reports stays reserved but can no longer be linked to you once your account is deleted.</td></tr>
+      <tr><td>Pin: team, blurred coordinates, precision, time</td><td>The fan map</td><td>Consent – (1)(a): you add it, you delete it</td><td>Until you delete it</td></tr>
+      <tr><td>"I'm here now" check-in: city-level point, time</td><td>Joining nearby tribes while travelling</td><td>Consent – (1)(a)</td><td>Valid for 72 hours, replaced by the next check-in, deleted with your account. Visible only to you.</td></tr>
+      <tr><td>Tribe memberships, posts, replies, cheers, XP</td><td>Community features</td><td>Contract – (1)(b)</td><td>Until you delete your account. Match cheer totals remain as anonymous counts.</td></tr>
+      <tr><td>Reports you make</td><td>Moderation, abuse handling</td><td>Legitimate interest – (1)(f)</td><td>Not public; kept for moderation; contains no name.</td></tr>
+      <tr><td>Analytics: page usage, clicks, device, approximate location (from IP), session recordings</td><td>Improving the map</td><td>Consent – (1)(a); if declined, only cookieless, aggregate measurement</td><td>Google Analytics: 14 months. Microsoft Clarity: per Microsoft's own retention rules.</td></tr>
+      <tr><td>Settings stored in your browser (theme, language, consent, unfinished pin)</td><td>Making the site work</td><td>Legitimate interest / strictly necessary</td><td>Until you clear them in your browser</td></tr>
+    </table></div>
+    <p>Your pin is <b>blurred on your own device before it is saved</b> (area: 250–600 m, city: ~5 km grid), so even we never receive your exact location unless you choose "Exact". Session recordings mask the pin panel and every input field; coordinates, IDs and email addresses never go into analytics.</p>
+
+    <h2>3. Who has access (processors and services)</h2>
+    <ul>
+      <li><b>Google</b> (Firebase sign-in, Firestore database in the EU, hosting; Google Analytics, Tag Manager; Google Fonts – your browser's IP address reaches Google).</li>
+      <li><b>Microsoft</b> – Clarity (heatmaps, session recordings), only with consent.</li>
+      <li><b>OpenFreeMap</b> – map tiles (your IP address with each request).</li>
+      <li><b>komoot Photon</b> – city and address search: the text you type and your IP address.</li>
+      <li><b>OpenStreetMap Foundation (Nominatim)</b> – the outline of a chosen country or city.</li>
+      <li><b>GitHub</b> – serving the daily match list (no personal data; your IP address with the request).</li>
+      <li><b>API-Football</b> – our scheduled job fetches the match list; it receives nothing about you.</li>
+    </ul>
+    <p>Some providers (Google, Microsoft, GitHub) may process data in the United States, under the EU–US Data Privacy Framework and their terms of service.</p>
+
+    <h2>4. Your rights</h2>
+    <ul>
+      <li><b>Access and portability:</b> Account → "Download my data" gives you everything as a JSON file.</li>
+      <li><b>Rectification:</b> edit your pin and username at any time.</li>
+      <li><b>Erasure:</b> Account → "Delete my account" removes your account and all related data immediately.</li>
+      <li><b>Withdrawing consent:</b> the "Cookies" button at the bottom of the left panel; you can delete your pin at any time.</li>
+      <li><b>Objection, restriction:</b> write to <a href="mailto:support@tribemap.com">support@tribemap.com</a>; we reply within 30 days.</li>
+      <li><b>Complaint:</b> to your local data protection authority, or the Hungarian NAIH (1055 Budapest, Falk Miksa utca 9–11., <a href="https://naih.hu">naih.hu</a>).</li>
+    </ul>
+
+    <h2>5. Age</h2>
+    <p>Sign-in and community features are for people aged 16 and over.</p>
+
+    <h2>6. Security</h2>
+    <p>Encrypted connections (HTTPS), strict database access rules (everyone can only write their own data), and no API keys in the browser.</p>
+
+    <h2>7. Changes</h2>
+    <p>If this notice changes materially, we will say so on this page. The date above shows the current version.</p>
+  </article>
+</div>
+</main>
+<script>
+const req = document.documentElement.dataset.req;
+for (const a of document.querySelectorAll(".langs a")) if (a.dataset.set === (req === "hu" ? "hu" : req === "es" ? "es" : "en")) a.setAttribute("aria-current", "true");
+if (req === "es") document.getElementById("esNote").hidden = false;
+for (const a of document.querySelectorAll(".langs a")) a.onclick = () => { try { localStorage.setItem("tm.lang", a.dataset.set); } catch (_) {} };
+</script>
+</body>
+</html>

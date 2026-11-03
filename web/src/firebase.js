@@ -7,8 +7,9 @@ import {
 } from "firebase/auth";
 import {
   getFirestore, connectFirestoreEmulator, collection, doc, onSnapshot, setDoc, getDoc, deleteDoc, updateDoc, serverTimestamp,
-  writeBatch, increment, query, orderBy, limit, arrayUnion, arrayRemove, deleteField, FieldPath, getDocs, where,
+  writeBatch, increment, query, orderBy, limit, arrayUnion, arrayRemove, deleteField, FieldPath, getDocs, where, collectionGroup,
 } from "firebase/firestore";
+import { deleteUser } from "firebase/auth";
 
 const app = initializeApp({
   apiKey: "AIzaSyCNvRnmwpSec8hqeU6lI98FKacOiwrzO7Q",
@@ -107,7 +108,7 @@ export async function claimUsername(nick, oldNick, acceptRules) {
 /* match day: one cheer per account per match, counter of my side +1, +25 XP the first cheer of the (UTC) day */
 export async function cheer(fx, pin) {
   const me = uid(), cid = fx.id + "_" + me, b = writeBatch(db);
-  b.set(doc(db, "cheers", cid), { f: fx.id, side: fx.side, team: pin.t, lat: pin.lat, lng: pin.lng, ts: serverTimestamp() });
+  b.set(doc(db, "cheers", cid), { f: fx.id, u: me, side: fx.side, team: pin.t, lat: pin.lat, lng: pin.lng, ts: serverTimestamp() });
   b.set(doc(db, "matches", String(fx.id)), { [fx.side]: increment(1) }, { merge: true });
   const s = await readStats();
   const xp = !!s && utcDay(s.lastCheerAt?.toMillis?.() || 0) < utcDay(Date.now());
@@ -118,6 +119,53 @@ export async function cheer(fx, pin) {
 export const hasCheered = async f => (await getDoc(doc(db, "cheers", f + "_" + uid()))).exists();
 export const watchMatch = (f, cb) => onSnapshot(doc(db, "matches", String(f)), s => cb(s.exists() ? s.data() : {}), () => cb({}));
 export const loadCheers = async f => (await getDocs(query(collection(db, "cheers"), where("f", "==", f), limit(3000)))).docs.map(d => d.data());
+
+/* ---------- GDPR: my data (export) and account deletion ---------- */
+const plain = v => v && typeof v.toDate === "function" ? v.toDate().toISOString() : Array.isArray(v) ? v.map(plain)
+  : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x)])) : v;
+const one = async (...path) => { const s = await getDoc(doc(db, ...path)); return s.exists() ? plain(s.data()) : null; };
+async function myMemberships(me) {
+  // tribes are few, so checking every tribe for my member doc also finds memberships from before the ledger existed
+  const tribes = await getDocs(collection(db, "tribes")), out = [];
+  for (const t of tribes.docs) { const m = await getDoc(doc(db, "tribes", t.id, "members", me)); if (m.exists()) out.push({ tid: t.id, team: t.data().team, ...plain(m.data()) }); }
+  return out;
+}
+export async function exportMyData() {
+  const me = uid(), u = auth.currentUser;
+  const [profile, pin, presence, stats, posts, replies, cheers, memberships] = await Promise.all([
+    one("users", me), one("pins", me), one("presence", me), one("stats", me),
+    getDocs(query(collectionGroup(db, "posts"), where("authorUid", "==", me))),
+    getDocs(query(collectionGroup(db, "replies"), where("authorUid", "==", me))),
+    getDocs(query(collection(db, "cheers"), where("u", "==", me))),
+    myMemberships(me),
+  ]);
+  return {
+    exportedAt: new Date().toISOString(),
+    account: { uid: me, email: u.email, providers: u.providerData.map(p => p.providerId), created: u.metadata.creationTime, lastSignIn: u.metadata.lastSignInTime },
+    profile, pin, presence, stats, memberships,
+    posts: posts.docs.map(d => ({ path: d.ref.path, ...plain(d.data()) })),
+    replies: replies.docs.map(d => ({ path: d.ref.path, ...plain(d.data()) })),
+    cheers: cheers.docs.map(d => plain(d.data())),
+  };
+}
+// Deleting the sign-in itself needs a recent sign-in; check first, so data and account go together.
+export const recentlySignedIn = (minutes = 4) => Date.now() - Date.parse(auth.currentUser?.metadata.lastSignInTime || 0) < minutes * 60000;
+export async function deleteMyAccount(onStep = () => {}) {
+  const me = uid();
+  onStep("posts");
+  for (const g of ["replies", "posts"]) for (const d of (await getDocs(query(collectionGroup(db, g), where("authorUid", "==", me)))).docs) await deleteDoc(d.ref);
+  onStep("tribes");
+  for (const m of await myMemberships(me)) await leaveTribe(m.tid, m.team);
+  onStep("cheers");
+  for (const d of (await getDocs(query(collection(db, "cheers"), where("u", "==", me)))).docs) await deleteDoc(d.ref);
+  onStep("profile");
+  const b = writeBatch(db), profile = await one("users", me);
+  for (const p of [["pins", me], ["presence", me], ["stats", me], ["users", me]]) if (await one(...p)) b.delete(doc(db, ...p));
+  if (profile?.nick) { const k = profile.nick.toLowerCase(), c = await one("usernames", k); if (c?.uid === me && (c.reports || 0) < 3) b.delete(doc(db, "usernames", k)); }
+  await b.commit();
+  onStep("account");
+  await deleteUser(auth.currentUser);
+}
 
 /* name reports: one per reporter per name; at 3 the name is hidden everywhere and must be changed */
 const nameFlags = new Map(); // lowercase nick -> Promise<boolean hidden>

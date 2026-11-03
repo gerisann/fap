@@ -166,7 +166,8 @@ service cloud.firestore {
         (me() == uid && (dailyClaim() || joinLedger() || leaveLedger() || cheerClaim()))
         || referralCredit(uid)
       );
-      allow delete: if false;
+      // account deletion (GDPR): my ledger goes with me
+      allow delete: if signedIn() && me() == uid;
     }
 
     // ---------- match days: cheers/{fixtureId_uid} + matches/{fixtureId} counters ----------
@@ -189,7 +190,9 @@ service cloud.firestore {
       allow read: if true;
       allow create: if signedIn()
         && cid == string(request.resource.data.f) + '_' + me()
-        && request.resource.data.keys().hasOnly(['f', 'side', 'team', 'lat', 'lng', 'ts'])
+        && request.resource.data.keys().hasOnly(['f', 'u', 'side', 'team', 'lat', 'lng', 'ts'])
+        // u: my uid, so my cheers can be found and erased when I delete my account
+        && request.resource.data.u == me()
         && request.resource.data.f is int && request.resource.data.f > 0
         && request.resource.data.side in ['h', 'a']
         && exists(pinDoc(me()))
@@ -200,7 +203,9 @@ service cloud.firestore {
         // the counter of my side goes up by one in the same batch
         && getAfter(matchDoc(request.resource.data.f)).data.get(request.resource.data.side, 0)
           == (exists(matchDoc(request.resource.data.f)) ? get(matchDoc(request.resource.data.f)).data.get(request.resource.data.side, 0) : 0) + 1;
-      allow update, delete: if false;
+      allow update: if false;
+      // account deletion (GDPR): my cheers go; the match counters stay as anonymous totals
+      allow delete: if signedIn() && resource.data.u == me();
     }
     match /matches/{f} {
       allow read: if true;
@@ -363,6 +368,11 @@ service cloud.firestore {
         }
       }
     }
+
+    // collection-group reads (all my posts / replies across tribes, for data export and account deletion).
+    // Posts and replies are public anyway; this only makes the cross-tribe query possible.
+    match /{path=**}/posts/{pid} { allow read: if true; }
+    match /{path=**}/replies/{rid} { allow read: if true; }
 
     match /{document=**} {
       allow read, write: if false;

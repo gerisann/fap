@@ -2,7 +2,7 @@
 import { test, before, after, beforeEach } from "node:test";
 import { readFileSync } from "node:fs";
 import { initializeTestEnvironment, assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
-import { doc, setDoc, getDoc, deleteDoc, writeBatch, serverTimestamp, increment, updateDoc, arrayUnion, arrayRemove, deleteField, FieldPath } from "firebase/firestore";
+import { doc, setDoc, getDoc, getDocs, deleteDoc, writeBatch, serverTimestamp, increment, updateDoc, arrayUnion, arrayRemove, deleteField, FieldPath, query, where, collectionGroup } from "firebase/firestore";
 
 let env;
 before(async () => {
@@ -225,7 +225,7 @@ test("cheers: one per match, counter follows, +25 XP once a day, own pin only", 
   await pin("alice", "Arsenal"); await nick("alice");
   const p = (await getDoc(doc(db("alice"), "pins", "alice"))).data();
   const cheer = (uid, f, side, xp, team = "Arsenal", at = p) => { const d = db(uid), b = writeBatch(d);
-    b.set(doc(d, "cheers", f + "_" + uid), { f, side, team, lat: at.lat, lng: at.lng, ts: serverTimestamp() });
+    b.set(doc(d, "cheers", f + "_" + uid), { f, u: uid, side, team, lat: at.lat, lng: at.lng, ts: serverTimestamp() });
     b.set(doc(d, "matches", String(f)), { [side]: increment(1) }, { merge: true });
     if (xp) b.update(doc(d, "stats", uid), { xp: increment(25), lastCheerAt: serverTimestamp(), lastCheer: f + "_" + uid });
     return b.commit(); };
@@ -241,6 +241,32 @@ test("cheers: one per match, counter follows, +25 XP once a day, own pin only", 
   await assertSucceeds(cheer("bob", 1001, "a", true, "Chelsea", (await getDoc(doc(db("bob"), "pins", "bob"))).data()));
   const m = (await getDoc(doc(db("bob"), "matches", "1001"))).data();
   if (m.h !== 1 || m.a !== 1) throw new Error("counter " + JSON.stringify(m));
+});
+
+test("account deletion: my data can be found and erased, others' cannot", async () => {
+  const tid = await seedTribeBy("alice");
+  await post("alice", tid, "p1", "Sziasztok!");
+  const d = db("alice");
+  // my posts across tribes via a collection-group query
+  const mine = await getDocs(query(collectionGroup(d, "posts"), where("authorUid", "==", "alice")));
+  if (mine.size !== 1) throw new Error("collection group " + mine.size);
+  await nick("bob"); await pin("bob", "Ferencváros");
+  const bd = db("bob"), bp = (await getDoc(doc(bd, "pins", "bob"))).data();
+  const bb = writeBatch(bd);
+  bb.set(doc(bd, "cheers", "77_bob"), { f: 77, u: "bob", side: "h", team: "Ferencváros", lat: bp.lat, lng: bp.lng, ts: serverTimestamp() });
+  bb.set(doc(bd, "matches", "77"), { h: increment(1) }, { merge: true });
+  await bb.commit();
+  await assertFails(deleteDoc(doc(d, "cheers", "77_bob")));            // not mine
+  await assertSucceeds(deleteDoc(doc(bd, "cheers", "77_bob")));
+  await assertFails(deleteDoc(doc(bd, "stats", "alice")));             // not mine
+  await assertSucceeds(leave("alice", tid));
+  const b = writeBatch(d);
+  b.delete(doc(d, "tribes", tid, "posts", "p1"));
+  b.delete(doc(d, "pins", "alice"));
+  b.delete(doc(d, "users", "alice"));
+  b.delete(doc(d, "usernames", "fan_alice"));
+  b.delete(doc(d, "stats", "alice"));
+  await assertSucceeds(b.commit());
 });
 
 test("join needs accepted community rules", async () => {
