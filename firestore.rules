@@ -19,6 +19,8 @@ service cloud.firestore {
     function reportDoc(t, p, u) { return /databases/$(database)/documents/tribes/$(t)/posts/$(p)/reports/$(u); }
     function isMember(t) { return exists(member(t, me())); }
     function isCaptain(t) { return isMember(t) && get(member(t, me())).data.role in ['captain', 'cocaptain']; }
+    // the founding captain, alone in the tribe: may clear its feed before leaving, which deletes the tribe
+    function lastCaptain(t) { return isMember(t) && get(member(t, me())).data.role == 'captain' && get(tribe(t)).data.memberCount == 1; }
     function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
     function text(s, max) { return s is string && s.trim().size() > 0 && s.size() <= max; }
 
@@ -114,7 +116,11 @@ service cloud.firestore {
         && request.resource.data.lastDailyAt == request.time
         && request.time.date() > resource.data.lastDailyAt.date();
     }
-    function joinLedger() {
+    // guards first: a ledger without lastJoin / lastLeave (backfilled by hand, or never joined) would make the
+    // let-bindings below an evaluation error, and an error anywhere in the update's || chain refuses the write
+    function joinLedger() { return 'lastJoin' in request.resource.data && joinLedgerOk(); }
+    function leaveLedger() { return 'lastLeave' in request.resource.data && leaveLedgerOk(); }
+    function joinLedgerOk() {
       let b = resource.data;
       let a = request.resource.data;
       let tid = a.lastJoin;
@@ -129,7 +135,7 @@ service cloud.firestore {
         && a.joined == (first ? b.joined.concat([tid]) : b.joined)
         && a.xp == b.xp + (first ? 50 : 0);
     }
-    function leaveLedger() {
+    function leaveLedgerOk() {
       let b = resource.data;
       let a = request.resource.data;
       let tid = a.lastLeave;
@@ -288,7 +294,10 @@ service cloud.firestore {
         || (changedOnly(['lastActivityAt']) && request.resource.data.lastActivityAt == request.time
           && isMember(tid) && stampedNow(tid))
       );
-      allow delete: if false;
+      // the last member (always the captain: a leaving captain hands over first) leaves, the tribe goes with them
+      allow delete: if signedIn() && resource.data.memberCount == 1
+        && exists(member(tid, me())) && get(member(tid, me())).data.role == 'captain'
+        && !existsAfter(member(tid, me()));
 
       match /members/{uid} {
         allow read: if true;
@@ -311,14 +320,20 @@ service cloud.firestore {
               && getAfter(tribe(tid)).data.memberCount == get(tribe(tid)).data.memberCount + 1)
           );
         // rate limit: at most one post / reply every 20 s; or follow my renamed username
-        allow update: if signedIn() && me() == uid && (
+        allow update: if signedIn() && ((me() == uid && (
           (changedOnly(['lastPostAt'])
             && request.resource.data.lastPostAt == request.time
             && (!('lastPostAt' in resource.data) || request.time > resource.data.lastPostAt + duration.value(20, 's')))
           || (changedOnly(['nick']) && request.resource.data.nick == getAfter(userDoc(uid)).data.nick)
+        ))
+          // a leaving captain hands the captaincy to another member in the same batch
+          || (me() != uid && changedOnly(['role']) && request.resource.data.role == 'captain'
+            && exists(member(tid, me())) && get(member(tid, me())).data.role == 'captain'
+            && !existsAfter(member(tid, me())))
         );
+        // the tribe's count goes down by one, or the tribe itself goes (last member)
         allow delete: if signedIn() && me() == uid
-          && getAfter(tribe(tid)).data.memberCount == get(tribe(tid)).data.memberCount - 1
+          && (!existsAfter(tribe(tid)) || getAfter(tribe(tid)).data.memberCount == get(tribe(tid)).data.memberCount - 1)
           && (!exists(statsDoc(uid)) || getAfter(statsDoc(uid)).data.lastLeave == tid);
       }
 
@@ -342,7 +357,7 @@ service cloud.firestore {
             && existsAfter(reportDoc(tid, pid, me())))
           || (changedOnly(['hidden']) && request.resource.data.hidden is bool && isCaptain(tid))
         );
-        allow delete: if signedIn() && resource.data.authorUid == me();
+        allow delete: if signedIn() && (resource.data.authorUid == me() || lastCaptain(tid));
 
         match /reports/{uid} {
           allow read: if false;
@@ -364,7 +379,7 @@ service cloud.firestore {
             && request.resource.data.hidden == false
             && getAfter(post(tid, pid)).data.replyCount == get(post(tid, pid)).data.replyCount + 1;
           allow update: if signedIn() && changedOnly(['hidden']) && request.resource.data.hidden is bool && isCaptain(tid);
-          allow delete: if signedIn() && resource.data.authorUid == me();
+          allow delete: if signedIn() && (resource.data.authorUid == me() || lastCaptain(tid));
         }
       }
     }

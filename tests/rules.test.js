@@ -340,3 +340,52 @@ test("replies, reports, captain hide, leave", async () => {
   const t = await getDoc(doc(db("alice"), "tribes", tid));
   if (t.data().memberCount !== 1) throw new Error("memberCount " + t.data().memberCount);
 });
+
+// mirrors leaveTribe() for a captain: hand over to `heir`, or (no heir) clear the feed and delete the tribe
+async function captainLeave(uid, tid, heir) {
+  const d = db(uid), team = (await getDoc(doc(d, "tribes", tid))).data().team, s = await stats(uid);
+  if (!heir) for (const p of (await getDocs(query(collectionGroup(d, "posts")))).docs.filter(p => p.ref.parent.parent.id === tid)) {
+    for (const r of (await getDocs(query(collectionGroup(d, "replies")))).docs.filter(r => r.ref.parent.parent.id === p.id)) await deleteDoc(r.ref);
+    await deleteDoc(p.ref);
+  }
+  const b = writeBatch(d);
+  b.delete(doc(d, "tribes", tid, "members", uid));
+  if (heir) { b.update(doc(d, "tribes", tid), { memberCount: increment(-1) }); b.update(doc(d, "tribes", tid, "members", heir), { role: "captain" }); }
+  else b.delete(doc(d, "tribes", tid));
+  const args = ["current", arrayRemove(tid), "lastLeave", tid];
+  if (s.current.includes(tid) && (s.teams[team] || 0) >= 1) args.push(new FieldPath("teams", team), s.teams[team] === 1 ? deleteField() : increment(-1));
+  b.update(doc(d, "stats", uid), ...args);
+  return b.commit();
+}
+
+test("captain leaves: hands over; the last one takes the tribe and its feed", async () => {
+  const tid = await seedTribe();
+  await nick("bob"); await pin("bob", "Újpest"); await join("bob", tid);
+  await post("alice", tid, "p1"); await reply("bob", tid, "p1", "r1");          // one write each: 20 s rate limit
+  const member = (who, of) => doc(db(who), "tribes", tid, "members", of);
+  await assertFails(deleteDoc(doc(db("bob"), "tribes", tid, "posts", "p1")));    // a member: own posts only
+  await assertFails(deleteDoc(doc(db("alice"), "tribes", tid, "posts", "p1", "replies", "r1"))); // a captain with members: own only
+  await assertFails(updateDoc(member("bob", "bob"), { role: "captain" }));       // no self-promotion
+  await assertFails(updateDoc(member("alice", "bob"), { role: "captain" }));     // handover only while leaving
+  await assertFails(deleteDoc(doc(db("alice"), "tribes", tid)));                 // the tribe is not hers to delete
+  await assertSucceeds(captainLeave("alice", tid, "bob"));
+  if ((await getDoc(member("bob", "bob"))).data().role !== "captain") throw new Error("handover");
+  await assertSucceeds(captainLeave("bob", tid, null));
+  if ((await getDoc(doc(db("bob"), "tribes", tid))).exists()) throw new Error("tribe kept");
+  if ((await getDocs(query(collectionGroup(db("bob"), "posts")))).size) throw new Error("feed kept");
+  if ((await stats("bob")).current.length) throw new Error("ledger");
+});
+
+test("last captain: the tribe goes only together with their member doc", async () => {
+  const tid = await seedTribe();
+  await assertFails(deleteDoc(doc(db("alice"), "tribes", tid)));                 // staying: no
+  await nick("bob"); await pin("bob", "Ferencváros");
+  await assertFails(deleteDoc(doc(db("bob"), "tribes", tid)));                   // not a member
+  await assertSucceeds(captainLeave("alice", tid, null));
+});
+
+test("a ledger without lastJoin (backfilled by hand) can still leave", async () => {
+  const tid = await seedTribe();
+  await env.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), "stats", "alice"), { lastJoin: deleteField() }));
+  await assertSucceeds(captainLeave("alice", tid, null));
+});

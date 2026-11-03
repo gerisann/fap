@@ -150,7 +150,7 @@ export function initTribes(ctx) {
   function paintMembership() {
     if (!open) return;
     const isMember = !!member;
-    $("#tsJoin").hidden = isMember; $("#tsLeave").hidden = !isMember || member.role === "captain";
+    $("#tsJoin").hidden = isMember; $("#tsLeave").hidden = !isMember;
     $("#tsComposer").hidden = !isMember;
     head(open.team, subOf(open) + (member?.role === "captain" ? " · " + t("captain") : ""), titleOf(open), open.name ? open.team : null);
     relabel($("#tsShare"), ctx.user() ? "inviteLinkXp" : "inviteLink");
@@ -210,8 +210,16 @@ export function initTribes(ctx) {
   }
   $("#tsJoin").onclick = join;
   $("#tsLeave").onclick = async () => {
-    if (!open || !confirm(t("leaveConfirm"))) return;
-    try { await ctx.backend().leaveTribe(open.id, open.team); status(t("left")); track("tribe_leave", { team: open.team }); } catch (_) { status(t("saveFailed"), true); }
+    // a captain hands over to the longest-standing member; alone, the tribe and its feed go
+    const captain = member?.role === "captain", alone = captain && (open.memberCount || 0) <= 1;
+    if (!open || !confirm(t(alone ? "leaveConfirmLast" : captain ? "leaveConfirmCaptain" : "leaveConfirm"))) return;
+    const team = open.team;
+    try {
+      const r = await ctx.backend().leaveTribe(open.id, team);
+      track("tribe_leave", { team, role: captain ? "captain" : "member", deleted: r.deleted });
+      if (r.deleted) { closeSheet(); ctx.flash(t("tribeDeleted")); }
+      else status(r.heir ? t("leftHandedOver", { nick: "@" + r.heir }) : t("left"));
+    } catch (_) { status(t("saveFailed"), true); }
   };
   // signed in: the link carries my uid, so I get +100 XP when someone joins through it for the first time
   $("#tsShare").onclick = async () => {

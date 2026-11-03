@@ -236,16 +236,35 @@ export async function joinTribe(tid, team, nick, ref) {
   await b.commit();
   return { first, referred: !!(okRef && first) };
 }
+// A captain hands the captaincy to the longest-standing member; the last member (always the captain) takes
+// the tribe with them, after clearing its feed. Returns { deleted, heir } (heir: the new captain's nick).
 export async function leaveTribe(tid, team) {
+  const me = uid(), mine = await getDoc(doc(db, "tribes", tid, "members", me));
+  const captain = mine.data()?.role === "captain";
+  const heir = captain ? (await getDocs(query(collection(db, "tribes", tid, "members"), orderBy("joinedAt"), limit(2)))).docs.find(d => d.id !== me) : null;
+  const last = captain && !heir;
+  if (last) await clearFeed(tid);
   const b = writeBatch(db), s = await readStats();
-  b.delete(doc(db, "tribes", tid, "members", uid()));
-  b.update(doc(db, "tribes", tid), { memberCount: increment(-1) });
+  b.delete(doc(db, "tribes", tid, "members", me));
+  if (last) b.delete(doc(db, "tribes", tid));
+  else b.update(doc(db, "tribes", tid), { memberCount: increment(-1) });
+  if (heir) b.update(heir.ref, { role: "captain" });
   if (s) {
     const args = ["current", arrayRemove(tid), "lastLeave", tid], n = s.teams?.[team] || 0;
     if (s.current.includes(tid) && n >= 1) args.push(new FieldPath("teams", team), n === 1 ? deleteField() : increment(-1));
-    b.update(statsRef(uid()), ...args);
+    b.update(statsRef(me), ...args);
   }
-  return b.commit();
+  await b.commit();
+  return { deleted: last, heir: heir?.data().nick || null };
+}
+// every post and reply of a tribe (the last captain may delete them all), in batches of 400
+async function clearFeed(tid) {
+  const refs = [];
+  for (const p of (await getDocs(collection(db, "tribes", tid, "posts"))).docs) {
+    for (const r of (await getDocs(collection(p.ref, "replies"))).docs) refs.push(r.ref);
+    refs.push(p.ref);
+  }
+  for (let i = 0; i < refs.length; i += 400) { const b = writeBatch(db); refs.slice(i, i + 400).forEach(r => b.delete(r)); await b.commit(); }
 }
 
 export const watchPosts = (tid, cb, onError) =>

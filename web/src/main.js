@@ -336,7 +336,9 @@ $("#radiusRange").addEventListener("change", () => track("area_filter", { level:
 
 /* ---------- top panel on phones: collapsed by default, tap the grip or swipe up / down ---------- */
 const board = $(".board"), grab = $("#boardGrab"), phone = matchMedia("(max-width:720px)");
+// on phones the board and the account sheet never stay open together: opening one closes the other
 function setBoard(open, persist) {
+  if (open && phone.matches) closeAccount();
   board.classList.toggle("collapsed", !open); grab.setAttribute("aria-expanded", String(open));
   if (persist) { try { localStorage.setItem("tm.board", open ? "1" : "0"); } catch (_) {} track("panel_toggle", { on: open }); }
 }
@@ -534,6 +536,7 @@ setInterval(() => { if (myPin) refreshMatch(); }, 5 * 60 * 1000);
 /* ---------- account block: who I am, my pin, language, theme ---------- */
 const account = $("#account");
 function closeAccount() { document.body.classList.remove("acct-open"); }
+function openAccount() { if (phone.matches) setBoard(false, false); document.body.classList.add("acct-open"); }
 function acctStatus(msg, err) { const s = $("#acctStatus"); s.textContent = msg || ""; s.classList.toggle("err", !!err); }
 function renderAccount() {
   const signed = !!user, uname = validUsername(profile?.nick) ? profile.nick : null, name = uname ? "@" + uname : user?.email || "";
@@ -549,7 +552,7 @@ function renderAccount() {
   renderXp(); renderMyTribes();
   if (myPin) { $("#mpDot").style.background = colorOf(myPin.t); $("#mpTeam").textContent = myPin.t; $("#mpSub").textContent = t("myPin") + " · " + t(PREC_KEY[myPin.p] || "precArea"); }
 }
-$("#acctBtn").onclick = () => { document.body.classList.toggle("acct-open"); track("account_open"); };
+$("#acctBtn").onclick = () => { if (document.body.classList.contains("acct-open")) closeAccount(); else openAccount(); track("account_open"); };
 $("#acctClose").onclick = closeAccount;
 $("#acctLoginBtn").onclick = () => { const box = $("#acctLogin"); box.hidden = !box.hidden; track("login_open"); };
 /* XP + level: level L needs 50·L·(L-1) XP in total (0, 100, 300, 600, 1000, …) */
@@ -569,6 +572,8 @@ function renderMyTribes() {
   for (const id of ids) { const tr = tribes?.get(id); if (tr) ul.append(tribes.row(tr)); }
   if (!ul.children.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = t("noMyTribes"); ul.append(li); }
 }
+// picking one of my tribes opens its sheet: the account sheet steps aside
+$("#myTribesList").addEventListener("click", e => { if (e.target.closest(".tribe-row")) closeAccount(); });
 
 /* ---------- GDPR: download my data, delete my account ---------- */
 $("#exportBtn").onclick = async () => {
@@ -672,9 +677,9 @@ $("#signOutBtn").onclick = () => { backend?.signOut(); track("logout"); };
 tribes = initTribes({
   map, maplibregl, t, num, track, colorOf, locale, asyncCombo, searchAreas,
   lang: () => lang, selected: () => selected, inScope: (lng, lat) => !area || area.test(lng, lat),
-  user: () => user, myPin: () => myPin, backend: () => backend,
+  user: () => user, myPin: () => myPin, backend: () => backend, flash: flashHint,
   openPinSheet: () => { openSheet(); $("#teamInput").focus(); },
-  openAuth: () => { $("#acctLogin").hidden = false; if (phone.matches) document.body.classList.add("acct-open"); },
+  openAuth: () => { $("#acctLogin").hidden = false; if (phone.matches) openAccount(); },
   setSheetOpen: open => document.body.classList.toggle("sheet-open", open || !sheet.hidden),
   onProfile: p => { profile = p; renderAccount(); showMine(myPin); },
   stats: () => stats, onTribes: () => renderMyTribes(),
@@ -693,7 +698,7 @@ import("./firebase.js").then(async fb => {
       // a name hidden by reports must be changed before posting again
       if (p?.nick && await fb.nameHidden(p.nick)) {
         profile = { ...p, nameHidden: true }; tribes.setProfile(profile);
-        acctStatus(t("nameHiddenYou"), true); openUnameForm(); if (phone.matches) document.body.classList.add("acct-open");
+        acctStatus(t("nameHiddenYou"), true); openUnameForm(); if (phone.matches) openAccount();
         track("name_hidden_notice");
       }
       renderAccount(); showMine(myPin);
