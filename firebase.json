@@ -2,11 +2,18 @@
   "firestore": {
     "rules": "firestore.rules"
   },
+  "emulators": {
+    "firestore": { "port": 8085 },
+    "auth": { "port": 9099 },
+    "ui": { "enabled": false },
+    "singleProjectMode": true
+  },
   "hosting": {
     "target": "app",
     "public": "dist",
     "ignore": ["firebase.json", "**/.*", "**/*.map"],
     "cleanUrls": true,
+    "rewrites": [{ "source": "/t/**", "destination": "/index.html" }],
     "headers": [
       {
         "source": "/assets/**",

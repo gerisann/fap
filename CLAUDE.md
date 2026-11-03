@@ -31,6 +31,7 @@ Anonim szurkolói világtérkép. Bárki bejelöli, hol él vagy tartózkodik, �
 - Világos/sötét mód: alapból `prefers-color-scheme`, a választás `localStorage`-ban (`tm.theme`). Nyelv: `?lang=` → `tm.lang` → böngésző → `en`.
 - 24 000 generált, seedelt demó szurkoló (`makeDemo`, a `web/src/data/cities.js` súlyai alapján), kapcsolható.
 - **Backend (F1, számlázás nélküli változat):** Firebase Auth (Google + e-mail link) + Firestore `pins/{uid}` (`web/src/firebase.js`, lustán betöltve). Írni csak ellenőrzött e-mailes, saját uid-re lehet; mezővalidálás és 30 mp-es rate limit a `firestore.rules`-ban. Belépés előtt csak az elmosott piszkozat várakozik (`tm.draft`). Az olvasás egyelőre közvetlen `onSnapshot`; ha lesz számlázás, a Cloud Run + CDN-cache váltja (docs/terv.md).
+- **Tribe-ok (T1, `web/src/tribes.js`, terv: `docs/tribes.md`):** csapat + város közösség. Id: `<város OSM-id>_<csapat-slug>`. Létrehozni csak a saját pin csapatára, csatlakozni bárkinek, de mindkettőt **csak a közelben** (~50 km a pintől vagy egy 72 órás „Itt vagyok most” `presence/{uid}` jelzéstől; a doboz a rules `close()`-ában és a JS `nearBox()`-ában ugyanaz, együtt módosítsd). Becenév + közösségi szabályok (16+) a `users/{uid}`-ben. Hírfolyam: posztok, válaszok, jelentés (3 után rejtett), kapitányi elrejtés, 20 mp-es rate limit. Meghívó link: `/t/<id>` (Hosting rewrite).
 - **Mérés:** minden esemény a `track()`-en át megy (`web/src/analytics.js`) → `dataLayer` → GTM (`VITE_GTM_ID`). Consent Mode v2, az analitika hozzájárulásig tiltva. A `track()` kiszűri a koordinátát, az uid-et és az e-mailt; ezt ne kerüld meg. A bejelölő panel `data-clarity-mask`.
 
 ## Fájlok és build
@@ -38,6 +39,8 @@ Anonim szurkolói világtérkép. Bárki bejelöli, hol él vagy tartózkodik, �
 - Vite, a gyökér a `web/`: `web/index.html`, `web/src/main.js` (térkép + UI), `i18n.js` + `locales/{hu,en,es}.js`, `basemap.js`, `analytics.js`, `data/` (`teams.js` `[név, ország, szín]`, `cities.js`, `demo.js` a `blur()`-ral).
 - Új felirat: kulcs mindhárom locale-ba, a HTML-ben `data-i18n` / `data-i18n-attr`, a JS-ben `t()`.
 - Parancsok (PowerShell, a repo gyökerében): `npm.cmd run dev`, `npm.cmd run build`, `npm.cmd run deploy` (build + `firebase deploy --only hosting:app`).
+- **Szabálymódosítás után kötelező:** `npm.cmd run test:rules` (emulátor, `tests/rules.test.js`), deploy: `firebase.cmd deploy --only firestore:rules`.
+- Bejelentkezett folyamatok helyi tesztje: `npm.cmd run emulators` + `http://localhost:5173/?emu` (Auth + Firestore emulátor, éles adat nem érintett). Az e-mail-link az emulátor kimenetében jelenik meg.
 - MapLibre v6 csak ESM; Vite alatt kötelező a `setWorkerUrl(...?worker&url)`, enélkül nem jönnek a csempék.
 - A gyökér `index.html` csak a GitHub Pages átirányítója, nem az app.
 

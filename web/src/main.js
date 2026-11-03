@@ -7,8 +7,9 @@ import { blur, makeDemo } from "./data/demo.js";
 import { loadStyle } from "./basemap.js";
 import { searchCities, searchAddress, searchAreas } from "./geocode.js";
 import { placeGeometry, circle, distKm, bbox, contains } from "./area.js";
+import { initTribes } from "./tribes.js";
 import { asyncCombo } from "./combo.js";
-import { t, num, lang, applyDom, setLang, onLangChange } from "./i18n.js";
+import { t, num, lang, locale, applyDom, setLang, onLangChange } from "./i18n.js";
 import { track, initAnalytics, consent, setConsent } from "./analytics.js";
 
 const $ = s => document.querySelector(s);
@@ -27,6 +28,7 @@ const DEMO = makeDemo(24000);
 const MAX_TEAMS = 5;
 let view = "pins", selected = [], showDemo = true;
 let area = null;                 // { level, name, geom, test(lng, lat) }; null = whole world
+let tribes = null;               // tribe layer + sheet (tribes.js), set up after the board
 let real = new Map();            // uid -> pin from the shared store
 let user = null, myPin = null, backend = null, loginMethod = null;
 const DRAFT = "tm.draft";        // blurred pin waiting for sign-in; never the raw location
@@ -118,6 +120,7 @@ function applyVisibility() {
   map.setLayoutProperty("heatL", "visibility", view === "heat" ? "visible" : "none");
   map.setFilter("heatL", selected.length ? ["in", ["get", "t"], ["literal", selected]] : null);
   clearLabels(); scheduleLabels();
+  tribes?.render();
 }
 function onClick(e, src) {
   if (picking || areaMode === "radius") return;
@@ -327,20 +330,24 @@ board.addEventListener("touchend", e => {
   if (swipeY == null) return; const dy = e.changedTouches[0].clientY - swipeY; swipeY = null;
   if (dy < -28) setBoard(false, true); else if (dy > 28) setBoard(true, true);
 }, { passive: true });
-function setView(v) { view = v; $("#vPins").setAttribute("aria-pressed", String(v === "pins")); $("#vHeat").setAttribute("aria-pressed", String(v === "heat")); applyVisibility(); track("view_change", { view: v }); }
-$("#vPins").onclick = () => setView("pins"); $("#vHeat").onclick = () => setView("heat");
+function setView(v) {
+  view = v;
+  for (const [id, k] of [["#vPins", "pins"], ["#vHeat", "heat"], ["#vTribes", "tribes"]]) $(id).setAttribute("aria-pressed", String(v === k));
+  tribes?.setVisible(v === "tribes"); applyVisibility(); track("view_change", { view: v });
+}
+$("#vPins").onclick = () => setView("pins"); $("#vHeat").onclick = () => setView("heat"); $("#vTribes").onclick = () => setView("tribes");
 $("#demoToggle").onchange = e => { showDemo = e.target.checked; rebuild(); track("demo_toggle", { on: showDemo }); };
 
 const langSel = $("#langSel"); langSel.value = lang;
 langSel.onchange = () => setLang(langSel.value);
-onLangChange(l => { if (lastGroups) renderStats(lastGroups, lastTotal); reloadStyle(); track("lang_change", { lang: l }); });
+onLangChange(l => { if (lastGroups) renderStats(lastGroups, lastTotal); tribes?.render(); reloadStyle(); track("lang_change", { lang: l }); });
 
 /* ---------- sign-up sheet ---------- */
 let chosenTeam = null, pickLL = null, picking = false, pendingMarker = null, myMarker = null;
 const sheet = $("#sheet");
 function openSheet() { sheet.hidden = false; document.body.classList.add("sheet-open"); }
 $("#openSheet").onclick = () => { openSheet(); $("#teamInput").focus(); track("pin_flow_start"); };
-$("#closeSheet").onclick = () => { sheet.hidden = true; document.body.classList.remove("sheet-open"); stopPick(); track("pin_flow_close", { team_chosen: !!chosenTeam, place_chosen: !!pickLL }); };
+$("#closeSheet").onclick = () => { sheet.hidden = true; document.body.classList.toggle("sheet-open", !!tribes?.isOpen()); stopPick(); track("pin_flow_close", { team_chosen: !!chosenTeam, place_chosen: !!pickLL }); };
 /* place: city search, then an optional street + number inside that city. Query text never goes to analytics. */
 let pickedCity = null;
 const addrBox = $("#addrBox");
@@ -458,16 +465,29 @@ $("#googleBtn").onclick = async () => {
 $("#emailForm").onsubmit = async e => {
   e.preventDefault(); if (!backend) return;
   const email = $("#emailInput").value.trim(); track("login_start", { method: "email" });
-  try { await backend.sendEmailLink(email); setStatus(t("linkSent", { email })); track("login_link_sent"); }
+  try { await backend.sendEmailLink(email, lang); setStatus(t("linkSent", { email })); track("login_link_sent"); }
   catch (err) { setStatus(t("authFailed"), true); track("login_error", { method: "email", code: err.code || "unknown" }); }
 };
 $("#signOutBtn").onclick = () => { backend?.signOut(); track("logout"); };
 
+/* ---------- tribes ---------- */
+tribes = initTribes({
+  map, maplibregl, t, num, track, colorOf, locale, asyncCombo, searchAreas,
+  lang: () => lang, selected: () => selected, inScope: (lng, lat) => !area || area.test(lng, lat),
+  user: () => user, myPin: () => myPin, backend: () => backend,
+  openPinSheet: () => { openSheet(); $("#teamInput").focus(); },
+  openAuth: () => { openSheet(); authBox.hidden = false; $("#saveBtn").hidden = true; },
+  setSheetOpen: open => document.body.classList.toggle("sheet-open", open || !sheet.hidden),
+});
+if (location.pathname.startsWith("/t/")) setView("tribes");
+
 /* shared store + auth load after the map, so first paint is not blocked by the Firebase SDK */
 import("./firebase.js").then(async fb => {
   backend = fb;
+  tribes.setBackend(fb);
   fb.onUser(u => {
     user = u;
+    tribes.onUser(u);
     if (u) { authBox.hidden = true; $("#saveBtn").hidden = false; if (loginMethod) { track("login_success", { method: loginMethod }); loginMethod = null; } }
     updateMine();
     const d = u && readDraft(); if (d) { openSheet(); publish(d); }

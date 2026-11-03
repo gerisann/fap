@@ -33,9 +33,14 @@
     <div><b id="sTeams">–</b><span data-i18n="teamsLabel"></span></div>
   </div>
   <div class="board-body" id="boardBody">
-    <div class="seg" role="group" data-i18n-attr="aria-label:viewGroup">
+    <div class="seg seg3" role="group" data-i18n-attr="aria-label:viewGroup">
       <button id="vPins" aria-pressed="true" data-i18n="viewPins"></button>
       <button id="vHeat" aria-pressed="false" data-i18n="viewHeat"></button>
+      <button id="vTribes" aria-pressed="false" data-i18n="viewTribes"></button>
+    </div>
+    <div class="tribes-box" id="tribesBox" hidden>
+      <button class="chipbtn newtribe" id="newTribeBtn" data-i18n="newTribe"></button>
+      <ul class="teams" id="tribeList"></ul>
     </div>
     <div class="area">
       <div class="seg seg4" role="group" id="areaSeg" data-i18n-attr="aria-label:areaLabel">
@@ -117,6 +122,49 @@
     <div id="myRow" hidden class="myrow"><span id="whoAmI"></span><button class="textbtn" id="delBtn" data-i18n="deletePin"></button><button class="textbtn" id="signOutBtn" data-i18n="signOut"></button></div>
     <div class="status" id="status" role="status"></div>
   </div>
+</aside>
+
+<!-- tribe: city + team community with a feed. Composer inputs are masked from session recordings. -->
+<aside class="sheet tribe-sheet" id="tribeSheet" hidden data-i18n-attr="aria-label:tribe">
+  <div class="sheet-head">
+    <div class="tribe-head"><span class="dot" id="tsDot"></span><div><h2 id="tsTitle"></h2><div class="tribe-sub" id="tsSub"></div></div></div>
+    <button class="x" id="tsClose" data-i18n-attr="aria-label:close">✕</button>
+  </div>
+
+  <div class="tribe-create" id="tsCreate" hidden>
+    <div class="step"><div class="label" data-i18n="stepTeam"></div><div class="field ro" id="tcTeam"></div></div>
+    <div class="step">
+      <div class="label" data-i18n="areaCity"></div>
+      <div class="combo">
+        <input class="field" id="tcCity" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="tcCityOpts" data-i18n-attr="placeholder:searchCity;aria-label:areaCity">
+        <ul id="tcCityOpts" role="listbox" hidden></ul>
+      </div>
+    </div>
+    <button class="save" id="tcSave" disabled data-i18n="createTribe"></button>
+  </div>
+
+  <div class="tribe-actions" id="tsActions">
+    <button class="save sm" id="tsJoin" data-i18n="join"></button>
+    <button class="textbtn" id="tsShare" data-i18n="inviteLink"></button>
+    <button class="textbtn" id="tsLeave" hidden data-i18n="leave"></button>
+  </div>
+
+  <div class="gate" id="tsGate" hidden><p id="tsGateText"></p><button class="chipbtn" id="tsGateBtn"></button></div>
+
+  <form class="nickbox" id="tsNick" hidden data-clarity-mask="true">
+    <div class="label" data-i18n="nickTitle"></div>
+    <input class="field" id="nickInput" maxlength="24" autocomplete="nickname" data-i18n-attr="placeholder:nickPh;aria-label:nickTitle">
+    <ul class="rules"><li data-i18n="rule1"></li><li data-i18n="rule2"></li><li data-i18n="rule3"></li><li data-i18n="rule4"></li></ul>
+    <label class="check"><input type="checkbox" id="rulesOk"> <span data-i18n="rulesAccept"></span></label>
+    <button class="save" id="nickSave" data-i18n="nickSave"></button>
+  </form>
+
+  <form class="composer" id="tsComposer" hidden data-clarity-mask="true">
+    <textarea class="field" id="postText" maxlength="500" rows="2" data-i18n-attr="placeholder:postPh;aria-label:postPh"></textarea>
+    <button class="chipbtn" data-i18n="send"></button>
+  </form>
+  <div class="status" id="tsStatus" role="status"></div>
+  <ul class="feed" id="tsFeed"></ul>
 </aside>
 
 <div class="pickhint" id="pickHint" hidden data-i18n="pickHint"></div>

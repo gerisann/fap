@@ -1,14 +1,47 @@
 rules_version = '2';
 
-// pins/{uid}: one pin per account (the doc id IS the uid). Public read: a pin holds only
-// team + already-blurred coordinates + precision + server time. No name, no email, ever.
+// Everything public is pseudonymous: pins hold team + blurred coords; tribes hold a city centre;
+// members and posts carry a self-chosen nickname, never a name or email.
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() {
       return request.auth != null && request.auth.token.email_verified == true;
     }
+    function me() { return request.auth.uid; }
+    // paths are built segment by segment ($() escapes slashes, so 'a/b' would be one segment)
+    function pinDoc(u) { return /databases/$(database)/documents/pins/$(u); }
+    function presenceDoc(u) { return /databases/$(database)/documents/presence/$(u); }
+    function userDoc(u) { return /databases/$(database)/documents/users/$(u); }
+    function tribe(t) { return /databases/$(database)/documents/tribes/$(t); }
+    function member(t, u) { return /databases/$(database)/documents/tribes/$(t)/members/$(u); }
+    function post(t, p) { return /databases/$(database)/documents/tribes/$(t)/posts/$(p); }
+    function reportDoc(t, p, u) { return /databases/$(database)/documents/tribes/$(t)/posts/$(p)/reports/$(u); }
+    function isMember(t) { return exists(member(t, me())); }
+    function isCaptain(t) { return isMember(t) && get(member(t, me())).data.role in ['captain', 'cocaptain']; }
+    function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    function text(s, max) { return s is string && s.trim().size() > 0 && s.size() <= max; }
+    // every post / reply / reply-count bump must be batched with this rate-limited stamp
+    function stampedNow(t) { return getAfter(member(t, me())).data.lastPostAt == request.time; }
 
+    // ~50 km box around a tribe's city centre (rules have no trig, so the longitude span widens by latitude band)
+    function close(aLat, aLng, bLat, bLng) {
+      let dLat = math.abs(aLat - bLat);
+      let dLng = math.abs(aLng - bLng);
+      let absLat = math.abs(bLat);
+      let lim = absLat < 35 ? 0.55 : (absLat < 50 ? 0.7 : (absLat < 60 ? 0.9 : 1.3));
+      return dLat <= 0.45 && (dLng <= lim || dLng >= 360 - lim);
+    }
+    // "you are near": your own pin (home), or a fresh "I'm here now" check-in (travelling, valid 72 h)
+    function nearMe(lat, lng) {
+      let pinPath = pinDoc(me());
+      let herePath = presenceDoc(me());
+      return (exists(pinPath) && close(get(pinPath).data.lat, get(pinPath).data.lng, lat, lng))
+        || (exists(herePath) && request.time < get(herePath).data.ts + duration.value(72, 'h')
+          && close(get(herePath).data.lat, get(herePath).data.lng, lat, lng));
+    }
+
+    // ---------- pins/{uid}: one pin per account ----------
     function validPin(d) {
       return d.keys().hasOnly(['t', 'lat', 'lng', 'p', 'ts'])
         && d.keys().hasAll(['t', 'lat', 'lng', 'p', 'ts'])
@@ -18,14 +51,143 @@ service cloud.firestore {
         && d.p in ['area', 'city', 'exact']
         && d.ts == request.time;
     }
-
     match /pins/{uid} {
       allow read: if true;
-      allow create: if signedIn() && request.auth.uid == uid && validPin(request.resource.data);
+      allow create: if signedIn() && me() == uid && validPin(request.resource.data);
       // at most one change every 30 s per account
-      allow update: if signedIn() && request.auth.uid == uid && validPin(request.resource.data)
+      allow update: if signedIn() && me() == uid && validPin(request.resource.data)
         && request.time > resource.data.ts + duration.value(30, 's');
-      allow delete: if signedIn() && request.auth.uid == uid;
+      allow delete: if signedIn() && me() == uid;
+    }
+
+    // ---------- presence/{uid}: private "I'm here now" check-in, city-level (0.05° grid) ----------
+    match /presence/{uid} {
+      allow read, delete: if signedIn() && me() == uid;
+      allow create, update: if signedIn() && me() == uid
+        && request.resource.data.keys().hasOnly(['lat', 'lng', 'ts'])
+        && request.resource.data.lat is number && request.resource.data.lat >= -85 && request.resource.data.lat <= 85
+        && request.resource.data.lng is number && request.resource.data.lng >= -180 && request.resource.data.lng <= 180
+        && request.resource.data.ts == request.time;
+    }
+
+    // ---------- users/{uid}: private profile (nickname + accepted community rules) ----------
+    match /users/{uid} {
+      allow read, delete: if signedIn() && me() == uid;
+      allow create, update: if signedIn() && me() == uid
+        && request.resource.data.keys().hasOnly(['nick', 'rulesAt'])
+        && request.resource.data.nick is string
+        && request.resource.data.nick.matches('^[\\p{L}\\p{N}][\\p{L}\\p{N} _.\\-]{1,23}$')
+        && request.resource.data.rulesAt is timestamp;
+    }
+
+    // ---------- tribes/{tid}: one per team + city; id = <cityOsm>_<team slug> ----------
+    match /tribes/{tid} {
+      allow read: if true;
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['team', 'city', 'cityOsm', 'country', 'lat', 'lng', 'memberCount', 'createdAt', 'lastActivityAt'])
+        && text(request.resource.data.team, 40)
+        && text(request.resource.data.city, 80)
+        && request.resource.data.country is string && request.resource.data.country.size() <= 80
+        && request.resource.data.cityOsm.matches('^[NWR][0-9]{1,12}$')
+        && tid == request.resource.data.cityOsm + '_' + request.resource.data.team.lower().replace('[^a-z0-9]+', '-')
+        && request.resource.data.lat is number && request.resource.data.lat >= -85 && request.resource.data.lat <= 85
+        && request.resource.data.lng is number && request.resource.data.lng >= -180 && request.resource.data.lng <= 180
+        // only for the team on your own pin, and only where you are
+        && exists(pinDoc(me()))
+        && get(pinDoc(me())).data.t == request.resource.data.team
+        && nearMe(request.resource.data.lat, request.resource.data.lng)
+        && request.resource.data.memberCount == 1
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.lastActivityAt == request.time
+        && getAfter(member(tid, me())).data.role == 'captain';
+
+      allow update: if signedIn() && (
+        // join: +1, my member doc appears in the same batch
+        (changedOnly(['memberCount', 'lastActivityAt'])
+          && request.resource.data.memberCount == resource.data.memberCount + 1
+          && request.resource.data.lastActivityAt == request.time
+          && !exists(member(tid, me())) && existsAfter(member(tid, me())))
+        // leave: -1, my member doc disappears in the same batch
+        || (changedOnly(['memberCount'])
+          && request.resource.data.memberCount == resource.data.memberCount - 1
+          && exists(member(tid, me())) && !existsAfter(member(tid, me())))
+        // activity stamp from a member who just posted
+        || (changedOnly(['lastActivityAt']) && request.resource.data.lastActivityAt == request.time
+          && isMember(tid) && stampedNow(tid))
+      );
+      allow delete: if false;
+
+      match /members/{uid} {
+        allow read: if true;
+        allow create: if signedIn() && me() == uid
+          && request.resource.data.keys().hasOnly(['nick', 'role', 'joinedAt'])
+          && exists(userDoc(uid))
+          && request.resource.data.nick == get(userDoc(uid)).data.nick
+          && request.resource.data.joinedAt == request.time
+          && (
+            // founding captain: the tribe doc is created in the same batch
+            (request.resource.data.role == 'captain' && !exists(tribe(tid)) && existsAfter(tribe(tid)))
+            // regular member: the tribe's count goes up by one in the same batch
+            // regular member: must be near the tribe; the tribe's count goes up by one in the same batch
+            || (request.resource.data.role == 'member' && exists(tribe(tid))
+              && nearMe(get(tribe(tid)).data.lat, get(tribe(tid)).data.lng)
+              && getAfter(tribe(tid)).data.memberCount == get(tribe(tid)).data.memberCount + 1)
+          );
+        // rate limit: at most one post / reply every 20 s
+        allow update: if signedIn() && me() == uid
+          && changedOnly(['lastPostAt'])
+          && request.resource.data.lastPostAt == request.time
+          && (!('lastPostAt' in resource.data) || request.time > resource.data.lastPostAt + duration.value(20, 's'));
+        allow delete: if signedIn() && me() == uid
+          && getAfter(tribe(tid)).data.memberCount == get(tribe(tid)).data.memberCount - 1;
+      }
+
+      match /posts/{pid} {
+        allow read: if true;
+        allow create: if signedIn() && isMember(tid) && stampedNow(tid)
+          && request.resource.data.keys().hasOnly(['authorUid', 'nick', 'type', 'text', 'createdAt', 'replyCount', 'reportCount', 'hidden'])
+          && request.resource.data.authorUid == me()
+          && request.resource.data.nick == get(member(tid, me())).data.nick
+          && request.resource.data.type == 'text'
+          && text(request.resource.data.text, 500)
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.replyCount == 0
+          && request.resource.data.reportCount == 0
+          && request.resource.data.hidden == false;
+        allow update: if signedIn() && (
+          (changedOnly(['replyCount']) && request.resource.data.replyCount == resource.data.replyCount + 1
+            && isMember(tid) && stampedNow(tid))
+          || (changedOnly(['reportCount']) && request.resource.data.reportCount == resource.data.reportCount + 1
+            && !exists(reportDoc(tid, pid, me()))
+            && existsAfter(reportDoc(tid, pid, me())))
+          || (changedOnly(['hidden']) && request.resource.data.hidden is bool && isCaptain(tid))
+        );
+        allow delete: if signedIn() && resource.data.authorUid == me();
+
+        match /reports/{uid} {
+          allow read: if false;
+          allow create: if signedIn() && me() == uid
+            && request.resource.data.keys().hasOnly(['reason', 'createdAt'])
+            && request.resource.data.reason in ['spam', 'abuse', 'personal', 'other']
+            && request.resource.data.createdAt == request.time
+            && getAfter(post(tid, pid)).data.reportCount == get(post(tid, pid)).data.reportCount + 1;
+        }
+
+        match /replies/{rid} {
+          allow read: if true;
+          allow create: if signedIn() && isMember(tid) && stampedNow(tid)
+            && request.resource.data.keys().hasOnly(['authorUid', 'nick', 'text', 'createdAt', 'hidden'])
+            && request.resource.data.authorUid == me()
+            && request.resource.data.nick == get(member(tid, me())).data.nick
+            && text(request.resource.data.text, 500)
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.hidden == false
+            && getAfter(post(tid, pid)).data.replyCount == get(post(tid, pid)).data.replyCount + 1;
+          allow update: if signedIn() && changedOnly(['hidden']) && request.resource.data.hidden is bool && isCaptain(tid);
+          allow delete: if signedIn() && resource.data.authorUid == me();
+        }
+      }
     }
 
     match /{document=**} {

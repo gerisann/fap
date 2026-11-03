@@ -2,10 +2,13 @@
    Public web config only; access is enforced by firestore.rules. */
 import { initializeApp } from "firebase/app";
 import {
-  getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut as fbSignOut,
+  getAuth, connectAuthEmulator, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut as fbSignOut,
   sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, browserLocalPersistence, setPersistence,
 } from "firebase/auth";
-import { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import {
+  getFirestore, connectFirestoreEmulator, collection, doc, onSnapshot, setDoc, getDoc, deleteDoc, updateDoc, serverTimestamp,
+  writeBatch, increment, query, orderBy, limit,
+} from "firebase/firestore";
 
 const app = initializeApp({
   apiKey: "AIzaSyCNvRnmwpSec8hqeU6lI98FKacOiwrzO7Q",
@@ -18,6 +21,12 @@ const app = initializeApp({
 });
 const auth = getAuth(app);
 const db = getFirestore(app);
+// dev only: `npm run emulators` + http://localhost:5173/?emu → local Auth + Firestore, no production data touched
+const EMU = import.meta.env.DEV && new URLSearchParams(location.search).has("emu");
+if (EMU) {
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  connectFirestoreEmulator(db, "127.0.0.1", 8085);
+}
 setPersistence(auth, browserLocalPersistence).catch(() => {});
 
 const EMAIL_KEY = "tm.email";
@@ -30,8 +39,10 @@ export async function signInGoogle() {
   catch (e) { if (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment") await signInWithRedirect(auth, p); else throw e; }
 }
 
-export async function sendEmailLink(email) {
-  await sendSignInLinkToEmail(auth, email, { url: location.origin + "/?signin=1", handleCodeInApp: true });
+export async function sendEmailLink(email, lang) {
+  auth.languageCode = lang; // Firebase appends ?lang= to the link; keep it equal to the UI language
+  const back = location.origin + "/?signin=1" + (EMU ? "&emu" : "");
+  await sendSignInLinkToEmail(auth, email, { url: back, handleCodeInApp: true });
   try { localStorage.setItem(EMAIL_KEY, email); } catch (_) {}
 }
 
@@ -43,7 +54,7 @@ export async function completeEmailLink(askEmail) {
   if (!email) return false;
   await signInWithEmailLink(auth, email, location.href);
   try { localStorage.removeItem(EMAIL_KEY); } catch (_) {}
-  const u = new URL(location.href); for (const k of [...u.searchParams.keys()]) if (k !== "lang") u.searchParams.delete(k);
+  const u = new URL(location.href); for (const k of [...u.searchParams.keys()]) if (k !== "lang" && k !== "emu") u.searchParams.delete(k);
   history.replaceState(null, "", u.pathname + u.search);
   return true;
 }
@@ -67,3 +78,76 @@ export function watchPins(onPins, onError) {
 // pin is already blurred by the caller; only team, blurred coords and precision leave the device
 export const savePin = pin => setDoc(doc(db, "pins", auth.currentUser.uid), { t: pin.t, lat: pin.lat, lng: pin.lng, p: pin.p, ts: serverTimestamp() });
 export const deletePin = () => deleteDoc(doc(db, "pins", auth.currentUser.uid));
+
+/* ---------- tribes (see firestore.rules for what each batch must contain) ---------- */
+const uid = () => auth.currentUser.uid;
+const snapData = d => ({ id: d.id, ...d.data({ serverTimestamps: "estimate" }) });
+
+export async function getProfile() { const s = await getDoc(doc(db, "users", uid())); return s.exists() ? s.data() : null; }
+export const saveProfile = nick => setDoc(doc(db, "users", uid()), { nick, rulesAt: serverTimestamp() });
+
+// "I'm here now": city-level (0.05° grid), private, valid 72 h for joining nearby tribes
+const grid = v => Math.round(v / 0.05) * 0.05;
+export async function checkIn(lat, lng) {
+  const at = { lat: +grid(lat).toFixed(4), lng: +grid(lng).toFixed(4) };
+  await setDoc(doc(db, "presence", uid()), { ...at, ts: serverTimestamp() });
+  return { ...at, ts: Date.now() };
+}
+export async function getPresence() {
+  const s = await getDoc(doc(db, "presence", uid()));
+  if (!s.exists()) return null; const d = s.data();
+  return { lat: d.lat, lng: d.lng, ts: d.ts?.toMillis?.() || 0 };
+}
+
+export const tribeId = (team, cityOsm) => cityOsm + "_" + team.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+export const watchTribes = (onTribes, onError) => onSnapshot(collection(db, "tribes"), s => onTribes(s.docs.map(snapData)), onError);
+export const watchMember = (tid, cb) => onSnapshot(doc(db, "tribes", tid, "members", uid()), s => cb(s.exists() ? s.data() : null), () => cb(null));
+
+export async function createTribe(t, nick) {
+  const tid = tribeId(t.team, t.cityOsm), b = writeBatch(db);
+  b.set(doc(db, "tribes", tid), { team: t.team, city: t.city, cityOsm: t.cityOsm, country: t.country || "", lat: t.lat, lng: t.lng, memberCount: 1, createdAt: serverTimestamp(), lastActivityAt: serverTimestamp() });
+  b.set(doc(db, "tribes", tid, "members", uid()), { nick, role: "captain", joinedAt: serverTimestamp() });
+  await b.commit(); return tid;
+}
+export function joinTribe(tid, nick) {
+  const b = writeBatch(db);
+  b.set(doc(db, "tribes", tid, "members", uid()), { nick, role: "member", joinedAt: serverTimestamp() });
+  b.update(doc(db, "tribes", tid), { memberCount: increment(1), lastActivityAt: serverTimestamp() });
+  return b.commit();
+}
+export function leaveTribe(tid) {
+  const b = writeBatch(db);
+  b.delete(doc(db, "tribes", tid, "members", uid()));
+  b.update(doc(db, "tribes", tid), { memberCount: increment(-1) });
+  return b.commit();
+}
+
+export const watchPosts = (tid, cb, onError) =>
+  onSnapshot(query(collection(db, "tribes", tid, "posts"), orderBy("createdAt", "desc"), limit(30)), s => cb(s.docs.map(snapData)), onError);
+export const watchReplies = (tid, pid, cb) =>
+  onSnapshot(query(collection(db, "tribes", tid, "posts", pid, "replies"), orderBy("createdAt", "asc"), limit(100)), s => cb(s.docs.map(snapData)), () => cb([]));
+
+export function createPost(tid, nick, text) {
+  const b = writeBatch(db), me = uid();
+  b.update(doc(db, "tribes", tid, "members", me), { lastPostAt: serverTimestamp() });
+  b.set(doc(collection(db, "tribes", tid, "posts")), { authorUid: me, nick, type: "text", text, createdAt: serverTimestamp(), replyCount: 0, reportCount: 0, hidden: false });
+  b.update(doc(db, "tribes", tid), { lastActivityAt: serverTimestamp() });
+  return b.commit();
+}
+export function createReply(tid, pid, nick, text) {
+  const b = writeBatch(db), me = uid();
+  b.update(doc(db, "tribes", tid, "members", me), { lastPostAt: serverTimestamp() });
+  b.update(doc(db, "tribes", tid, "posts", pid), { replyCount: increment(1) });
+  b.set(doc(collection(db, "tribes", tid, "posts", pid, "replies")), { authorUid: me, nick, text, createdAt: serverTimestamp(), hidden: false });
+  return b.commit();
+}
+export function reportPost(tid, pid, reason) {
+  const b = writeBatch(db);
+  b.set(doc(db, "tribes", tid, "posts", pid, "reports", uid()), { reason, createdAt: serverTimestamp() });
+  b.update(doc(db, "tribes", tid, "posts", pid), { reportCount: increment(1) });
+  return b.commit();
+}
+export const setPostHidden = (tid, pid, hidden) => updateDoc(doc(db, "tribes", tid, "posts", pid), { hidden });
+export const deletePost = (tid, pid) => deleteDoc(doc(db, "tribes", tid, "posts", pid));
+export const deleteReply = (tid, pid, rid) => deleteDoc(doc(db, "tribes", tid, "posts", pid, "replies", rid));
+export const currentUid = () => auth.currentUser?.uid || null;
