@@ -437,7 +437,7 @@ body.view-tribes #teamSearch,body.view-tribes #teamList,body.view-tribes #moreTe
   .cta{bottom:calc(18px + env(safe-area-inset-bottom,0px))}
 }
 /* the app never zooms as a page (pinch, double tap, iOS focus zoom below 16px): only the map zooms, on its own */
-html{touch-action:pan-x pan-y}
+html{touch-action:pan-x pan-y;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 @media (pointer:coarse){input,textarea,select,.field,.field.sm{font-size:16px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}.mb-lbl{animation:none!important}}
 

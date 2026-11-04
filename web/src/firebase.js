@@ -36,6 +36,7 @@ export const onUser = fn => onAuthStateChanged(auth, fn);
 
 export async function signInGoogle() {
   const p = new GoogleAuthProvider();
+  p.setCustomParameters({ prompt: "select_account" }); // always let them pick (or add) an account, not the last one silently
   try { await signInWithPopup(auth, p); }
   catch (e) { if (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment") await signInWithRedirect(auth, p); else throw e; }
 }

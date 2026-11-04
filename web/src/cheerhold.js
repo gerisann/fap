@@ -61,18 +61,29 @@ export function holdToCheer(btn, card, opts) {
 
   function start() {
     if (state !== "idle" || btn.disabled || !opts.canStart()) return;
-    state = "holding"; t0 = performance.now();
+    // already cheered for this match: just the show, for as long as the button is held (no fill, nothing saved)
+    const replay = !!opts.isDone?.();
+    state = replay ? "replay" : "holding"; t0 = performance.now();
     const c = opts.color(); btn.style.setProperty("--mc", c); btn.style.setProperty("--mct", opts.text(c)); btn.style.setProperty("--p", 0);
-    btn.classList.add("holding"); lbl(opts.labels().hold); opts.onStart?.();
-    if (!reduced()) { fans = crowd(card, c); for (const [ms, k] of WAVES) timers.push(setTimeout(() => fans?.add(k), ms)); }
+    btn.classList.add(replay ? "full" : "holding"); lbl(opts.labels().hold); opts.onStart?.();
+    if (!reduced()) {
+      fans = crowd(card, c); for (const [ms, k] of WAVES) timers.push(setTimeout(() => fans?.add(k), ms));
+      if (replay) timers.push(setTimeout(() => fans?.wild(), WAVES[WAVES.length - 1][0] + 600));
+    }
+    opts.track(replay ? "cheer_replay_start" : "cheer_hold_start");
+    if (replay) return;
     const step = now => {
       const p = Math.min(1, (now - t0) / HOLD_MS); btn.style.setProperty("--p", p.toFixed(4));
       if (p >= 1) finish(); else raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
-    opts.track("cheer_hold_start");
   }
   function cancel() {
+    if (state === "replay") {
+      state = "idle"; stopFx(); btn.classList.remove("full"); lbl(opts.labels().idle); fans?.leave(); fans = null;
+      opts.track("cheer_replay_end", { held_ms: Math.round(performance.now() - t0) });
+      return;
+    }
     if (state !== "holding") return;
     state = "idle"; stopFx(); btn.classList.remove("holding"); btn.style.setProperty("--p", 0); lbl(opts.labels().idle);
     fans?.leave(); fans = null;

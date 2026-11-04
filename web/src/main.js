@@ -558,15 +558,16 @@ function paintCounts(m) {
   $("#mbCountH").textContent = t("cheersN", { n: num(h) }); $("#mbCountA").textContent = t("cheersN", { n: num(a) });
   $("#mbBarH").style.flexGrow = h + a ? h : 1; $("#mbBarA").style.flexGrow = h + a ? a : 1;
 }
-function setCheerBtn(done) { const b = $("#mbCheer"); relabel(b, done ? "cheered" : "cheer"); b.disabled = done; b.classList.toggle("done", done); }
+function setCheerBtn(done) { const b = $("#mbCheer"); relabel(b, done ? "cheered" : "cheer"); b.disabled = false; b.classList.toggle("done", done); } // stays pressable: holding it again replays the crowd
 // cheering takes a 5-second hold (cheerhold.js): the button fills in my colour while puppet fans climb out behind the card
 const lum = c => { const [r, g, b] = rgbOf(c); return (0.299 * r + 0.587 * g + 0.114 * b) / 255; };
 let cheerXp = false;
 holdToCheer($("#mbCheer"), $("#matchBar"), {
   canStart: () => !!(matchFx && backend && myPin),
+  isDone: () => $("#mbCheer").classList.contains("done"),
   color: () => sideColor(matchFx.side),
   text: c => lum(c) > .62 ? "#16181c" : "#fff",
-  labels: () => ({ hold: t("cheerHold"), done: t("cheerOk"), idle: t("cheer") }),
+  labels: () => ({ hold: t("cheerHold"), done: t("cheerOk"), idle: t($("#mbCheer").classList.contains("done") ? "cheered" : "cheer") }),
   track,
   onShort: () => { $("#mbInfo").textContent = t("cheerHoldHint"); },
   onStart: () => paintMatch(),
