@@ -440,3 +440,13 @@ body.view-tribes #teamSearch,body.view-tribes #teamList,body.view-tribes #moreTe
 html{touch-action:pan-x pan-y}
 @media (pointer:coarse){input,textarea,select,.field,.field.sm{font-size:16px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}.mb-lbl{animation:none!important}}
+
+/* crests (paintDot): a real club crest replaces the colour dot, a little larger, square, never cropped */
+.dot.crest{width:18px;height:18px;border-radius:0}
+.tribe-mk .dot.crest{width:18px;height:18px}
+.tribe-row .dot.crest{width:20px;height:20px}
+.tribe-head .dot.crest{width:28px;height:28px}
+.mypin .dot.crest{width:28px;height:28px}
+.mb-side .dot.crest{width:20px;height:20px}
+.teams li button:has(.dot.crest){grid-template-columns:18px 1fr auto}
+.is-dark .dot.crest{filter:drop-shadow(0 0 1px rgba(255,255,255,.45))}

@@ -1,11 +1,17 @@
 name: Teams from API-Football
 
 # Monthly (and on demand): club leagues + national teams -> web/src/data/teams-api.js (~65 requests, paced
-# for the free plan's per-minute limit). The app picks the new list up on the next hosting deploy.
+# for the free plan's per-minute limit), then the club crests that are still missing (no key, no quota) ->
+# web/public/logos/. The app picks both up on the next hosting deploy. "crests_only" skips the API list.
 on:
   schedule:
     - cron: "40 5 1 * *"
   workflow_dispatch:
+    inputs:
+      crests_only:
+        description: "Only fetch missing crests (no API-Football requests)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -17,21 +23,26 @@ concurrency:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Fetch teams
+        if: ${{ !inputs.crests_only }}
         env:
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: node scripts/fetch-teams.mjs
+      - name: Fetch crests
+        run: |
+          command -v convert || command -v magick || (sudo apt-get update -q && sudo apt-get install -y -q imagemagick)
+          node scripts/fetch-logos.mjs
       - name: Commit if changed
         run: |
           git config user.name "tribemap-bot"
           git config user.email "tribemap-bot@users.noreply.github.com"
-          git add web/src/data/teams-api.js
+          git add web/src/data/teams-api.js web/src/data/logos.js web/public/logos
           if git diff --cached --quiet; then echo "no change"; exit 0; fi
           git commit -m "Teams from API-Football $(date -u +%F)"
           git pull --rebase

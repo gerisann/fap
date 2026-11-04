@@ -92,7 +92,7 @@ export function initTribes(ctx) {
       for (const group of byCity.values()) group.forEach((tr, i) => {
         const n = group.length, a = i / n * 2 * Math.PI - Math.PI / 2, r = n > 1 ? 26 + n * 3 : 0;
         const el = document.createElement("button"); el.className = "tribe-mk" + (z < TRIBE_ZOOM_FULL ? " compact" : ""); el.title = titleOf(tr) + " · " + placeOf(tr);
-        const d = document.createElement("span"); d.className = "dot"; d.style.background = ctx.colorOf(tr.team);
+        const d = document.createElement("span"); d.className = "dot"; ctx.paintDot(d, tr.team);
         const txt = document.createElement("span"); txt.className = "tm-text";
         const top = document.createElement("span"); top.className = "tm-top";
         const nm = document.createElement("b"); nm.className = "nm"; nm.textContent = titleOf(tr); top.append(nm);
@@ -111,7 +111,7 @@ export function initTribes(ctx) {
   // a two-line row (name + team tag / city · members · founded), used in the board list and in "My tribes"
   function tribeRow(tr, source) {
     const li = document.createElement("li"), b = document.createElement("button"); b.className = "tribe-row";
-    const d = document.createElement("span"); d.className = "dot"; d.style.background = ctx.colorOf(tr.team);
+    const d = document.createElement("span"); d.className = "dot"; ctx.paintDot(d, tr.team);
     const txt = document.createElement("span"); txt.className = "tr-text";
     const top = document.createElement("span"); top.className = "tm-top";
     const nm = document.createElement("b"); nm.textContent = titleOf(tr); top.append(nm); if (tr.name) top.append(teamTag(tr.team));
@@ -156,7 +156,7 @@ export function initTribes(ctx) {
     for (const u of replyWatch.values()) u(); replyWatch.clear();
   }
   function head(team, sub, title = team, tag = null) {
-    $("#tsDot").style.background = ctx.colorOf(team); $("#tsTitle").textContent = title; $("#tsSub").textContent = sub;
+    ctx.paintDot($("#tsDot"), team); $("#tsTitle").textContent = title; $("#tsSub").textContent = sub;
     const slot = $("#tsTag"); slot.replaceChildren(); if (tag) slot.append(teamTag(tag));
   }
   // the team's matches today and tomorrow (fixtures.yml snapshots; the free plan sees no further ahead)

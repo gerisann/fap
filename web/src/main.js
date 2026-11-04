@@ -3,7 +3,8 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "./style.css";
 import { TEAMS as CURATED } from "./data/teams.js";
-import { API_TEAMS } from "./data/teams-api.js";
+import { API_TEAMS, API_IDS } from "./data/teams-api.js";
+import { LOGOS } from "./data/logos.js";
 import { blur, makeDemo } from "./data/demo.js";
 import { loadStyle } from "./basemap.js";
 import { searchCities, searchAddress, searchAreas, searchDistricts } from "./geocode.js";
@@ -39,6 +40,16 @@ const aliases = { "fradi": "Ferencváros", "ftc": "Ferencváros", "barca": "FC B
 function hashColor(s) { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `hsl(${h % 360} 70% 58%)`; }
 function canonical(name) { const k = name.trim().toLowerCase(); const m = teamMeta.get(k) || teamMeta.get((aliases[k] || "").toLowerCase()) || teamMeta.get((teamByFold.get(fold(k)) || "").toLowerCase()) || teamMeta.get((aliasByFold.get(fold(k)) || "").toLowerCase()); return m ? m.name : name.trim().replace(/\s+/g, " ").slice(0, 40); }
 function colorOf(name) { const m = teamMeta.get(name.toLowerCase()); return m && m.color ? m.color : hashColor(name); }
+// a club's crest (self-hosted in web/public/logos/, scripts/fetch-logos.mjs) where we have one; national teams and
+// free-typed names keep their colour dot. paintDot() is the one place a team's dot gets painted.
+const TEAM_ID = new Map([...API_TEAMS.map(([n, , id]) => [n, id]), ...Object.entries(API_IDS)]);
+function crestOf(name) {
+  const m = teamMeta.get(String(name).toLowerCase()); if (!m || m.country === "NAT") return null;
+  const id = TEAM_ID.get(m.name); return id && LOGOS.has(id) ? `/logos/${id}.png` : null;
+}
+function paintDot(el, name, color = colorOf(name)) {
+  const u = crestOf(name); el.classList.toggle("crest", !!u); el.style.background = u ? `url(${u}) center/contain no-repeat` : color; return el;
+}
 const DEMO = makeDemo(24000, 100); // 24 000 home points ×100 fans: see makeDemo()
 
 /* ---------- state ---------- */
@@ -152,7 +163,7 @@ function onClick(e, src) {
   const tm = f.properties.t;
   const pl = t({ exact: "popExact", area: "popArea", city: "popCity" }[f.properties.p] || "popArea");
   const el = document.createElement("div");
-  const a = document.createElement("div"); a.className = "pop-t"; const d = document.createElement("span"); d.className = "dot"; d.style.background = colorOf(tm); a.append(d, document.createTextNode(t("fanOf", { team: tm })));
+  const a = document.createElement("div"); a.className = "pop-t"; const d = document.createElement("span"); d.className = "dot"; paintDot(d, tm); a.append(d, document.createTextNode(t("fanOf", { team: tm })));
   const b = document.createElement("div"); b.className = "pop-s"; b.textContent = pl + " · " + t(f.properties.d ? "demoTag" : "realTag");
   el.append(a, b);
   new maplibregl.Popup({ offset: 10, closeButton: false }).setLngLat(f.geometry.coordinates).setDOMContent(el).addTo(map);
@@ -260,7 +271,7 @@ function renderStats(groups, total) {
   const ul = $("#teamList"); ul.replaceChildren();
   for (const [tm, n] of rows) {
     const li = document.createElement("li"), b = document.createElement("button"); b.setAttribute("aria-pressed", String(selected.includes(tm)));
-    const d = document.createElement("span"); d.className = "dot"; d.style.background = colorOf(tm);
+    const d = document.createElement("span"); d.className = "dot"; paintDot(d, tm);
     const nm = document.createElement("span"); nm.textContent = tm; const c = document.createElement("span"); c.className = "n"; c.textContent = num(n);
     b.append(d, nm, c); b.onclick = () => toggleTeam(tm, q ? "search" : "list"); li.append(b); ul.append(li);
   }
@@ -273,7 +284,7 @@ function renderStats(groups, total) {
 function renderFilter() {
   const box = $("#filterBox"); box.replaceChildren();
   for (const tm of selected) {
-    const chip = document.createElement("div"); chip.className = "filter-chip"; const d = document.createElement("span"); d.className = "dot"; d.style.background = colorOf(tm);
+    const chip = document.createElement("div"); chip.className = "filter-chip"; const d = document.createElement("span"); d.className = "dot"; paintDot(d, tm);
     const n = document.createElement("span"); n.textContent = tm; const x = document.createElement("button"); x.textContent = "✕"; x.setAttribute("aria-label", t("clearFilter") + ": " + tm); x.onclick = () => toggleTeam(tm, "chip");
     chip.append(d, n, x); box.append(chip);
   }
@@ -431,7 +442,7 @@ function showOpts() {
   optIdx = 0; opts.replaceChildren();
   optList.forEach((o, i) => {
     const li = document.createElement("li"); li.setAttribute("role", "option"); li.setAttribute("aria-selected", String(i === optIdx));
-    const name = typeof o === "string" ? o : o.custom; const d = document.createElement("span"); d.className = "dot"; d.style.background = colorOf(name);
+    const name = typeof o === "string" ? o : o.custom; const d = document.createElement("span"); d.className = "dot"; paintDot(d, name);
     const s = document.createElement("span"); s.textContent = typeof o === "string" ? o : t("newTeam", { name: o.custom });
     const sm = document.createElement("small"); const ctry = typeof o === "string" ? teamMeta.get(o.toLowerCase()).country : null;
     sm.textContent = ctry ? (ctry === "NAT" ? t("national") : ctry) : t("custom");
@@ -482,7 +493,7 @@ function showMine(p) {
   el.addEventListener("click", ev => {
     ev.stopPropagation();
     const box = document.createElement("div");
-    const a = document.createElement("div"); a.className = "pop-t"; const d = document.createElement("span"); d.className = "dot"; d.style.background = colorOf(p.t); a.append(d, document.createTextNode(t("thisIsYou")));
+    const a = document.createElement("div"); a.className = "pop-t"; const d = document.createElement("span"); d.className = "dot"; paintDot(d, p.t); a.append(d, document.createTextNode(t("thisIsYou")));
     const b = document.createElement("div"); b.className = "pop-s"; b.textContent = t("fanOf", { team: p.t }) + " · " + t({ exact: "popExact", area: "popArea", city: "popCity" }[p.p] || "popArea");
     const acts = document.createElement("div"); acts.className = "pop-actions"; const e = document.createElement("button"); e.textContent = t("editPin"); e.onclick = () => { popup.remove(); openSheet(true); track("pin_edit_start", { source: "popup" }); }; acts.append(e);
     box.append(a, b, acts);
@@ -536,8 +547,8 @@ function sideColor(side) {
 function paintMatch() {
   const fx = matchFx;
   $("#mbHome").textContent = fx.home; $("#mbAway").textContent = fx.away;
-  $("#mbHDot").style.background = $("#mbBarH").style.background = sideColor("h");
-  $("#mbADot").style.background = $("#mbBarA").style.background = sideColor("a");
+  paintDot($("#mbHDot"), fx.home, sideColor("h")); $("#mbBarH").style.background = sideColor("h");
+  paintDot($("#mbADot"), fx.away, sideColor("a")); $("#mbBarA").style.background = sideColor("a");
   $("#mbInfo").textContent = (Date.now() < fx.kickoff ? t("kickoffAt", { time: hhmm(fx.kickoff) }) : t("matchLive")) + " · " + fx.league;
 }
 let lastCounts = {};
@@ -598,7 +609,7 @@ function renderAccount() {
   if (signed) $("#acctLogin").hidden = true;
   $("#myPinBox").hidden = $("#myPinActs").hidden = !myPin; $("#noPinBox").hidden = !signed || !!myPin;
   renderXp(); renderMyTribes();
-  if (myPin) { $("#mpDot").style.background = colorOf(myPin.t); $("#mpTeam").textContent = myPin.t; $("#mpSub").textContent = t("myPin") + " · " + t(PREC_KEY[myPin.p] || "precArea"); }
+  if (myPin) { paintDot($("#mpDot"), myPin.t); $("#mpTeam").textContent = myPin.t; $("#mpSub").textContent = t("myPin") + " · " + t(PREC_KEY[myPin.p] || "precArea"); }
 }
 $("#acctBtn").onclick = () => { if (document.body.classList.contains("acct-open")) closeAccount(); else openAccount(); track("account_open"); };
 $("#acctClose").onclick = closeAccount;
@@ -742,7 +753,7 @@ $("#signOutBtn").onclick = () => { backend?.signOut(); track("logout"); };
 
 /* ---------- tribes ---------- */
 tribes = initTribes({
-  map, maplibregl, t, num, track, colorOf, locale, asyncCombo, searchAreas, searchDistricts,
+  map, maplibregl, t, num, track, colorOf, paintDot, locale, asyncCombo, searchAreas, searchDistricts,
   lang: () => lang, selected: () => selected, inScope: (lng, lat) => !area || area.test(lng, lat),
   user: () => user, myPin: () => myPin, backend: () => backend, flash: flashHint, onMembership: () => renderMyTribes(),
   openPinSheet: () => { openSheet(); $("#teamInput").focus(); },

@@ -19,6 +19,8 @@ Anonim szurkolói világtérkép. Bárki bejelöli, hol él vagy tartózkodik, �
 
 ## Funkciók (jelenleg)
 
+- **Címerek:** a klubok valódi címere a `web/public/logos/<API-id>.png`-ből (64 px, saját hostingról, így a látogató IP-je nem kerül harmadik félhez). A `scripts/fetch-logos.mjs` tölti le az API-Football médiaszerveréről (kulcs és napi keret nélkül), csak a hiányzókat, ImageMagickkel; a `teams.yml` része (kézi „crests_only” kapcsolóval csak ez fut). A `web/src/data/logos.js` (generált) mondja meg, melyik id-hez van fájl. A kliensben **minden csapatpötty a `paintDot()`-on megy át** (main.js; tribes.js a ctx-en át): címer, ha van, különben a szín. Válogatottaknál és szabadon beírt csapatnál szín marad. Ha egy klub kéri, a szkript `BLOCK` listájába kerül az id-je (a fájlt is törli). A címer a klub védjegye: nem kereskedelmi használat, kérésre levesszük.
+
 - MapLibre GL JS v6 + OpenFreeMap (`positron` / `dark`), globe nézet. A stílust a `web/src/basemap.js` tölti be, átszínezi a tokenekre, és a feliratokat `name:<nyelv>` mezőre állítja.
 - **Pinek nézet:**
   - minden csapat: egy klaszterforrás, `clusterProperties` a top 40 csapat darabszámával → HTML-markeres fánkdiagram (összlétszám középen);
