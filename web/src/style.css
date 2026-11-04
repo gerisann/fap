@@ -232,6 +232,14 @@ body.sheet-open .cta{display:none}
 body.sheet-open .matchbar,body.acct-open .matchbar{display:none}
 @keyframes mb-in{from{transform:translate(-50%,20px);opacity:0}to{transform:translateX(-50%);opacity:1}}
 .mb-top{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--mute)}
+.mb-top{gap:10px}
+.mb-top .mb-tag{flex:none;white-space:nowrap}
+.mb-right{display:flex;align-items:center;gap:8px;min-width:0}
+#mbInfo{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mb-x{width:26px;height:26px;font-size:11px;flex:none}
+.mb-chip{position:fixed;z-index:5;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));max-width:calc(100% - 20px);box-sizing:border-box;
+  display:flex;align-items:center;gap:8px;border:0;border-radius:999px;background:var(--paper);color:var(--ink);box-shadow:var(--shadow);padding:7px 14px 7px 8px;font:600 13px/1.2 var(--f-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.sheet-open .mb-chip,body.acct-open .mb-chip{display:none}
 .mb-tag{background:var(--cobalt);color:#fff;font-weight:700;font-size:11px;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:999px}
 .mb-teams{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
 .mb-side{display:flex;align-items:center;gap:7px;min-width:0}

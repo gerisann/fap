@@ -498,15 +498,34 @@ const hhmm = ms => new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: 
 async function refreshMatch() {
   const bar = $("#matchBar");
   const fx = myPin && backend ? (await todaysMatches(myPin.t).catch(() => [])).find(cheerOpen) : null;
-  if (!fx) { bar.hidden = true; unsubMatch?.(); unsubMatch = null; matchFx = null; return; }
+  if (!fx) { bar.hidden = true; $("#mbChip").hidden = true; unsubMatch?.(); unsubMatch = null; matchFx = null; return; }
   if (matchFx?.id !== fx.id) {
     matchFx = fx; unsubMatch?.(); unsubMatch = backend.watchMatch(fx.id, paintCounts);
     backend.hasCheered(fx.id).then(setCheerBtn).catch(() => setCheerBtn(false));
     track("matchday_show", { team: myPin.t });
   }
-  matchFx = { ...matchFx, ...fx }; paintMatch(); bar.hidden = false;
+  matchFx = { ...matchFx, ...fx }; paintMatch(); foldMatch(folded() === String(fx.id));
 }
-const sideColor = side => side === matchFx.side ? colorOf(myPin.t) : colorOf(side === "h" ? matchFx.home : matchFx.away);
+// the bar can be folded for the rest of this match (remembered); a small chip brings it back
+const MB_FOLD = "tm.mbHide";
+const folded = () => { try { return localStorage.getItem(MB_FOLD); } catch (_) { return null; } };
+function foldMatch(on) {
+  $("#matchBar").hidden = on; $("#mbChip").hidden = !on;
+  if (on) $("#mbChipText").textContent = matchFx.home + " – " + matchFx.away + (Date.now() < matchFx.kickoff ? " " + hhmm(matchFx.kickoff) : "");
+}
+$("#mbClose").onclick = () => { try { localStorage.setItem(MB_FOLD, String(matchFx.id)); } catch (_) {} foldMatch(true); track("matchday_fold"); };
+$("#mbChip").onclick = () => { try { localStorage.removeItem(MB_FOLD); } catch (_) {} foldMatch(false); track("matchday_unfold"); };
+// rival colours must differ: mine stays, a look-alike opponent gets the most distant of a few fallbacks
+const rgbCtx = document.createElement("canvas").getContext("2d");
+const rgbOf = c => { rgbCtx.fillStyle = "#000"; rgbCtx.fillStyle = c; const h = rgbCtx.fillStyle; return h[0] === "#" ? [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)) : [0, 0, 0]; };
+const colorDist = (a, b) => { const x = rgbOf(a), y = rgbOf(b); return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]); };
+const RIVAL_FALLBACK = ["#3355ff", "#ffb020", "#21a366", "#f2f2f2"];
+function sideColor(side) {
+  const mine = colorOf(myPin.t);
+  if (side === matchFx.side) return mine;
+  const theirs = colorOf(side === "h" ? matchFx.home : matchFx.away);
+  return colorDist(mine, theirs) >= 110 ? theirs : RIVAL_FALLBACK.reduce((best, c) => colorDist(mine, c) > colorDist(mine, best) ? c : best);
+}
 function paintMatch() {
   const fx = matchFx;
   $("#mbHome").textContent = fx.home; $("#mbAway").textContent = fx.away;

@@ -82,6 +82,8 @@
   </div>
   <button class="grab" id="boardGrab" aria-expanded="true" aria-controls="boardBody" data-i18n-attr="aria-label:panelToggle"><span></span></button>
 </section>
+<!-- the match bar, folded away for this match: one tap brings it back -->
+<button class="mb-chip" id="mbChip" hidden><span class="mb-tag" data-i18n="matchday"></span><span id="mbChipText"></span></button>
 
 <!-- account: who I am, my pin, language, theme. Top-right on desktop, bottom sheet on phones. -->
 <section class="account" id="account" data-i18n-attr="aria-label:account">
@@ -148,7 +150,7 @@
 
 <!-- match day: my team plays today → cheer all day until the final whistle, live split vs the opponent -->
 <section class="matchbar" id="matchBar" hidden data-i18n-attr="aria-label:matchday">
-  <div class="mb-top"><span class="mb-tag" data-i18n="matchday"></span><span id="mbInfo"></span></div>
+  <div class="mb-top"><span class="mb-tag" data-i18n="matchday"></span><span class="mb-right"><span id="mbInfo"></span><button class="x mb-x" id="mbClose" data-i18n-attr="aria-label:close">✕</button></span></div>
   <div class="mb-teams">
     <span class="mb-side"><i class="dot" id="mbHDot"></i><b id="mbHome"></b></span>
     <span class="mb-vs">–</span>
