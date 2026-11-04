@@ -84,7 +84,7 @@ export function makeDemo(n, scale = 1) {
   // around a random demo city somewhere in the world, worth scale − 1 fans (w); all counts sum w
   if (scale > 1) for (const p of out.slice()) {
     const c = CITIES[Math.floor(rnd() * CITIES.length)];
-    place(p.t, c[1], c[2], 1 + rnd() * 2, scale - 1);
+    place(p.t, c[1], c[2], c[4] * (1 + rnd() * 3), scale - 1); // the city's own spread (×1–4), so coastal cities stay on land
   }
   return out;
 }

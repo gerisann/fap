@@ -11,6 +11,7 @@ import { placeGeometry, circle, distKm, bbox, contains } from "./area.js";
 import { initTribes, validUsername, usernameProblem } from "./tribes.js";
 import { isProfane } from "./profanity.js";
 import { todaysMatches, cheerOpen } from "./fixtures.js";
+import { ALIASES } from "./teamkeys.js";
 import { asyncCombo } from "./combo.js";
 import { runTour } from "./tour.js";
 import { t, num, lang, locale, applyDom, setLang, onLangChange } from "./i18n.js";
@@ -29,9 +30,13 @@ const fold = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const TEAM_F = TEAMS.map(([n]) => fold(n));
 const teamMeta = new Map(TEAMS.map(([n, c, col]) => [n.toLowerCase(), { name: n, country: c, color: col }]));
 const teamByFold = new Map(TEAMS.map(([n], i) => [TEAM_F[i], n]).reverse()); // first spelling wins
+// API-Football spellings work as search aliases too (Bayern Munich, Wolves, FCSB ...)
+const ALIAS_OF = new Map(TEAMS.map(([n], i) => [n, (ALIASES[n] || []).map(fold).filter(a => a !== TEAM_F[i])]));
+const aliasByFold = new Map(); for (const [n, as] of ALIAS_OF) for (const a of as) if (!aliasByFold.has(a)) aliasByFold.set(a, n);
+const aliasHit = (n, qf) => ALIAS_OF.get(n)?.some(a => a.includes(qf));
 const aliases = { "fradi": "Ferencváros", "ftc": "Ferencváros", "barca": "FC Barcelona", "barça": "FC Barcelona", "bayern": "Bayern München", "man utd": "Manchester United", "psg": "Paris Saint-Germain", "bvb": "Borussia Dortmund", "spurs": "Tottenham Hotspur", "juve": "Juventus", "dvsc": "Debreceni VSC", "dvtk": "Diósgyőr", "fehérvár": "Videoton / MOL Fehérvár" };
 function hashColor(s) { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `hsl(${h % 360} 70% 58%)`; }
-function canonical(name) { const k = name.trim().toLowerCase(); const m = teamMeta.get(k) || teamMeta.get((aliases[k] || "").toLowerCase()) || teamMeta.get((teamByFold.get(fold(k)) || "").toLowerCase()); return m ? m.name : name.trim().replace(/\s+/g, " ").slice(0, 40); }
+function canonical(name) { const k = name.trim().toLowerCase(); const m = teamMeta.get(k) || teamMeta.get((aliases[k] || "").toLowerCase()) || teamMeta.get((teamByFold.get(fold(k)) || "").toLowerCase()) || teamMeta.get((aliasByFold.get(fold(k)) || "").toLowerCase()); return m ? m.name : name.trim().replace(/\s+/g, " ").slice(0, 40); }
 function colorOf(name) { const m = teamMeta.get(name.toLowerCase()); return m && m.color ? m.color : hashColor(name); }
 const DEMO = makeDemo(24000, 100); // 24 000 home points ×100 fans: see makeDemo()
 
@@ -249,8 +254,8 @@ function renderStats(groups, total) {
   $("#sFans").textContent = num(total);
   $("#sTeams").textContent = num(groups.size);
   const all = [...groups.entries()].sort((a, b) => b[1] - a[1]);
-  const q = teamQuery.trim().toLowerCase(), al = aliases[q];
-  const rows = q ? all.filter(([tm]) => tm.toLowerCase().includes(q) || (al && tm === al)).slice(0, 40) : showAll ? all : all.slice(0, 10);
+  const q = teamQuery.trim().toLowerCase(), al = aliases[q], qf = fold(q);
+  const rows = q ? all.filter(([tm]) => fold(tm).includes(qf) || (al && tm === al) || aliasHit(tm, qf)).slice(0, 40) : showAll ? all : all.slice(0, 10);
   const ul = $("#teamList"); ul.replaceChildren();
   for (const [tm, n] of rows) {
     const li = document.createElement("li"), b = document.createElement("button"); b.setAttribute("aria-pressed", String(selected.includes(tm)));
@@ -391,6 +396,7 @@ function openSheet(edit = false) {
     validate();
   }
   $("#myRow").hidden = !editing;
+  if (tribes?.isOpen()) tribes.close(); // one sheet at a time: they sit on the same spot
   sheet.hidden = false; document.body.classList.add("sheet-open"); closeAccount();
 }
 function showMyPin() { if (!myPin) return; closeAccount(); map.flyTo({ center: [myPin.lng, myPin.lat], zoom: Math.max(map.getZoom(), 13), duration: 1200 }); track("my_pin_show"); }
@@ -416,9 +422,9 @@ const ti = $("#teamInput"), opts = $("#teamOpts"); let optIdx = 0, optList = [];
 function showOpts() {
   const q = ti.value.trim().toLowerCase();
   if (!q) { opts.hidden = true; ti.setAttribute("aria-expanded", "false"); return; }
-  const al = aliases[q], qf = fold(q);
+  const qf = fold(q), al = aliases[q] || aliasByFold.get(qf);
   // alias, then name start, then word start, then anywhere; ties keep the curated-first order
-  const rank = (n, f) => n === al ? 0 : f.startsWith(qf) ? 1 : f.includes(" " + qf) ? 2 : f.includes(qf) ? 3 : 9;
+  const rank = (n, f) => n === al ? 0 : f.startsWith(qf) ? 1 : f.includes(" " + qf) ? 2 : f.includes(qf) ? 3 : aliasHit(n, qf) ? 4 : 9;
   optList = TEAMS.map(([n], i) => [n, rank(n, TEAM_F[i])]).filter(x => x[1] < 9).sort((a, b) => a[1] - b[1]).slice(0, 8).map(x => x[0]);
   if (!optList.some(n => n.toLowerCase() === q)) optList.push({ custom: ti.value.trim().slice(0, 40) });
   optIdx = 0; opts.replaceChildren();
@@ -726,6 +732,7 @@ tribes = initTribes({
   openPinSheet: () => { openSheet(); $("#teamInput").focus(); },
   openAuth: () => { $("#acctLogin").hidden = false; if (phone.matches) openAccount(); },
   setSheetOpen: open => document.body.classList.toggle("sheet-open", open || !sheet.hidden),
+  closePin: () => { if (!sheet.hidden) { sheet.hidden = true; stopPick(); } },
   onProfile: p => { profile = p; renderAccount(); showMine(myPin); },
   stats: () => stats, onTribes: () => renderMyTribes(),
 });

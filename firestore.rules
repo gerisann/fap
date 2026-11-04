@@ -24,6 +24,8 @@ service cloud.firestore {
     function isCaptain(t) { return isMember(t) && get(member(t, me())).data.role in ['captain', 'cocaptain']; }
     // the founding captain, alone in the tribe: may clear its feed before leaving, which deletes the tribe
     function lastCaptain(t) { return isMember(t) && get(member(t, me())).data.role == 'captain' && get(tribe(t)).data.memberCount == 1; }
+    // a guest whose 3 days are over: anyone may sweep them out, so memberCount stays honest
+    function expiredGuest(t, u) { return exists(member(t, u)) && get(member(t, u)).data.role == 'guest' && get(member(t, u)).data.until <= request.time; }
     function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
     function text(s, max) { return s is string && s.trim().size() > 0 && s.size() <= max; }
 
@@ -295,6 +297,11 @@ service cloud.firestore {
         || (changedOnly(['memberCount'])
           && request.resource.data.memberCount == resource.data.memberCount - 1
           && exists(member(tid, me())) && !existsAfter(member(tid, me())))
+        // sweep: -1, an expired guest's member doc (named in swept) disappears in the same batch
+        || (changedOnly(['memberCount', 'swept'])
+          && request.resource.data.memberCount == resource.data.memberCount - 1
+          && request.resource.data.swept is string && expiredGuest(tid, request.resource.data.swept)
+          && !existsAfter(member(tid, request.resource.data.swept)))
         // activity stamp from a member who just posted
         || (changedOnly(['lastActivityAt']) && request.resource.data.lastActivityAt == request.time
           && isMember(tid) && stampedNow(tid))
@@ -344,9 +351,13 @@ service cloud.firestore {
             && !existsAfter(member(tid, me())))
         );
         // the tribe's count goes down by one, or the tribe itself goes (last member)
-        allow delete: if signedIn() && me() == uid
+        allow delete: if signedIn() && ((me() == uid
           && (!existsAfter(tribe(tid)) || getAfter(tribe(tid)).data.memberCount == get(tribe(tid)).data.memberCount - 1)
-          && (!exists(statsDoc(uid)) || getAfter(statsDoc(uid)).data.lastLeave == tid);
+          && (!exists(statsDoc(uid)) || getAfter(statsDoc(uid)).data.lastLeave == tid))
+          // anyone sweeps out an expired guest, the tribe naming them in swept and counting one less
+          || (me() != uid && resource.data.role == 'guest' && resource.data.until <= request.time
+            && getAfter(tribe(tid)).data.swept == uid
+            && getAfter(tribe(tid)).data.memberCount == get(tribe(tid)).data.memberCount - 1));
       }
 
       match /posts/{pid} {

@@ -122,7 +122,7 @@ export default {
   joinDenied: "You can't join this one: you're too far away or you've reached the 3-team limit.",
   inviteLinkXp: "Invite link (+100 XP when someone joins with it)",
   myTribes: "My tribes",
-  myTribesOpen: "All my tribes",
+  myTribesOpen: "Show me my Tribes",
   noMyTribes: "You're not in any tribe yet.",
   level: "Level {n}",
   xpPts: "{xp} XP · {left} to the next",

@@ -122,7 +122,7 @@ export default {
   joinDenied: "Ehhez nem csatlakozhatsz: túl messze vagy, vagy elérted a 3 csapatos korlátot.",
   inviteLinkXp: "Meghívó link (+100 XP, ha valaki csatlakozik vele)",
   myTribes: "Tribe-jaim",
-  myTribesOpen: "Összes tribe-om",
+  myTribesOpen: "Mutasd a Tribe-jaim",
   noMyTribes: "Még egy tribe-nak sem vagy tagja.",
   level: "{n}. szint",
   xpPts: "{xp} XP · még {left} a következőig",

@@ -265,7 +265,7 @@ body.sheet-open .mb-chip,body.acct-open .mb-chip{display:none}
 .myrow span{flex-basis:100%;text-align:center}
 
 /* account: top-right card (desktop) / bottom sheet (phones) */
-.account{position:fixed;z-index:5;top:calc(18px + env(safe-area-inset-top,0px));right:calc(18px + env(safe-area-inset-right,0px));width:280px;box-sizing:border-box;
+.account{position:fixed;z-index:5;top:calc(18px + env(safe-area-inset-top,0px));right:calc(18px + env(safe-area-inset-right,0px));width:340px;box-sizing:border-box;
   background:var(--paper);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:16px;display:flex;flex-direction:column;gap:12px}
 body.sheet-open .account{display:none}
 .acct-head{display:flex;align-items:center;gap:10px}
@@ -300,9 +300,12 @@ body.sheet-open .account{display:none}
 .mypin .dot{width:12px;height:12px}
 .mypin b{display:block;font-weight:600;font-size:14px}
 .mypin span{font-size:12px;color:var(--mute)}
-.acct-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.acct-actions button{border:0;border-radius:999px;padding:9px 4px;font-weight:600;font-size:12px;background:var(--wash);color:var(--ink);white-space:nowrap}
+/* icon-only, right under the pin card */
+.acct-actions{display:flex;gap:8px;margin-top:-4px}
+.acct-actions button{border:0;border-radius:50%;width:38px;height:38px;display:grid;place-items:center;background:var(--wash);color:var(--ink);flex:none}
+.acct-actions button svg{width:17px;height:17px}
 .acct-actions .primary{background:var(--ink);color:var(--paper)}
+.acct-actions .danger{color:#d7263d;margin-left:auto}
 .nopin{display:flex;flex-direction:column;gap:8px;align-items:flex-start;font-size:13px;color:var(--mute)}
 .nopin .chipbtn{padding:10px 16px;border-radius:999px}
 .acct-tools{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -353,7 +356,7 @@ body.view-tribes #teamSearch,body.view-tribes #teamList,body.view-tribes #moreTe
 .mt-card .teams{overflow-y:auto;margin:0 -6px;padding:0 6px}
 .gate-btns{display:flex;gap:8px;flex-wrap:wrap}
 .guest-tag{vertical-align:1px;color:var(--cobalt)}
-.mt-more{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:600}
+.teams li button.mt-more{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:600}
 .mt-more .n{color:var(--mute);font-weight:500}
 
 /* guided tour: a lit-up hole over the explained part, the rest dimmed; the tip card sits next to it */

@@ -430,3 +430,24 @@ test("guests: from far away, at most 3 days, tagged, no ledger", async () => {
   await assertSucceeds(leave("bob", tid));
   if ((await getDoc(doc(db("bob"), "tribes", tid))).data().memberCount !== 1) throw new Error("count after leave");
 });
+
+// anyone may sweep an expired guest out: member doc gone, count −1, swept names them
+function sweep(by, tid, guest, n = -1) {
+  const d = db(by), b = writeBatch(d);
+  b.delete(doc(d, "tribes", tid, "members", guest));
+  b.update(doc(d, "tribes", tid), { memberCount: increment(n), swept: guest });
+  return b.commit();
+}
+test("expired guests can be swept out by anyone, active ones and members cannot", async () => {
+  const tid = await seedTribe();                                                  // alice, captain
+  await nick("bob"); await pin("bob", "Arsenal", LON); await assertSucceeds(guestJoin("bob", tid));
+  await nick("cid"); await pin("cid", "Arsenal", LON); await assertSucceeds(guestJoin("cid", tid));
+  await assertFails(sweep("dan", tid, "bob"));                                    // still within 3 days
+  await assertFails(sweep("dan", tid, "alice"));                                  // not a guest
+  await env.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), "tribes", tid, "members", "bob"), { until: Timestamp.fromMillis(Date.now() - 1000) }));
+  await assertFails(sweep("dan", tid, "bob", -2));                                // exactly one less
+  await assertFails(sweep("dan", tid, "cid"));                                    // swept must name the expired one
+  await assertSucceeds(sweep("dan", tid, "bob"));
+  if ((await getDoc(doc(db("dan"), "tribes", tid))).data().memberCount !== 2) throw new Error("count after sweep");
+  await assertFails(sweep("dan", tid, "bob"));                                    // already gone
+});

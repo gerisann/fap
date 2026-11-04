@@ -123,7 +123,7 @@ export function initTribes(ctx) {
 
   /* ---------- sheet ---------- */
   const status = (msg, err) => { const s = $("#tsStatus"); s.textContent = msg || ""; s.classList.toggle("err", !!err); };
-  function showSheet() { sheet.hidden = false; ctx.setSheetOpen(true); }
+  function showSheet() { ctx.closePin?.(); sheet.hidden = false; ctx.setSheetOpen(true); }
   function closeSheet() {
     sheet.hidden = true; sheet.classList.remove("full"); ctx.setSheetOpen(false); stopWatching(); open = null;
     if (location.pathname.startsWith("/t/")) history.replaceState(null, "", "/" + location.search);
@@ -204,6 +204,8 @@ export function initTribes(ctx) {
     map.flyTo({ center: [tr.lng, tr.lat], zoom: Math.max(map.getZoom(), 9), duration: 900 });
     const fb = ctx.backend();
     if (fb && ctx.user() && !unsubMember) unsubMember = fb.watchMember(id, mbr => { member = mbr; paintMembership(); });
+    // expired guests would keep inflating the count until they come back: whoever opens the tribe sweeps them (once a session)
+    if (fb && ctx.user() && tr.memberCount > 1 && !swept.has(id)) { swept.add(id); fb.sweepGuests(id).catch(() => {}); }
     if (!ctx.user()) { member = null; paintMembership(); }
     if (fb && !unsubPosts) unsubPosts = fb.watchPosts(id, renderFeed, e => { status(t("offline"), true); track("store_error", { code: e.code || "unknown", source: "posts" }); });
     if (source !== "refresh") track("tribe_open", { team: tr.team, source });
@@ -263,7 +265,7 @@ export function initTribes(ctx) {
   const readGuests = () => { try { return JSON.parse(localStorage.getItem(GUESTS) || "{}"); } catch (_) { return {}; } };
   const writeGuests = g => { try { localStorage.setItem(GUESTS, JSON.stringify(g)); } catch (_) {} };
   const guestIds = () => Object.entries(readGuests()).filter(([, until]) => until > Date.now()).map(([id]) => id);
-  const dropping = new Set();
+  const dropping = new Set(), swept = new Set();
   async function dropGuest(tr) {
     if (dropping.has(tr.id)) return; dropping.add(tr.id);
     const g = readGuests(); delete g[tr.id]; writeGuests(g);

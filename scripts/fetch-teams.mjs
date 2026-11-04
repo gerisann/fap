@@ -14,7 +14,7 @@ const OUT = new URL("../web/src/data/teams-api.js", import.meta.url);
 const PACE_MS = Number(process.env.PACE_MS ?? 6500);
 const MIN_TEAMS = Number(process.env.MIN_TEAMS ?? 300); // fewer means something went wrong: keep the old file
 
-// [API country, API league name]; order = search ranking for API teams
+// [API country, API league name or alternatives (split seasons: only the running half is "current")]; order = search ranking for API teams
 const CLUBS = [
   ["England", "Premier League"], ["Spain", "La Liga"], ["Germany", "Bundesliga"], ["Italy", "Serie A"], ["France", "Ligue 1"],
   ["Hungary", "NB I"], ["Portugal", "Primeira Liga"], ["Netherlands", "Eredivisie"], ["Belgium", "Jupiler Pro League"],
@@ -27,7 +27,7 @@ const CLUBS = [
   ["England", "Championship"], ["England", "League One"], ["England", "League Two"], ["Spain", "Segunda División"],
   ["Germany", "2. Bundesliga"], ["Italy", "Serie B"], ["France", "Ligue 2"], ["Hungary", "NB II"],
   ["Argentina", "Liga Profesional Argentina"], ["Brazil", "Serie A"], ["Brazil", "Serie B"], ["Mexico", "Liga MX"],
-  ["USA", "Major League Soccer"], ["Colombia", "Primera A"], ["Chile", "Primera División"], ["Uruguay", "Primera División - Apertura"],
+  ["USA", "Major League Soccer"], ["Colombia", "Primera A"], ["Chile", "Primera División"], ["Uruguay", ["Primera División - Apertura", "Primera División - Clausura", "Primera División - Intermedio"]],
   ["Peru", "Primera División"], ["Ecuador", "Liga Pro"], ["Paraguay", "Division Profesional - Apertura"],
   ["Saudi-Arabia", "Pro League"], ["Japan", "J1 League"], ["South-Korea", "K League 1"], ["China", "Super League"],
   ["Australia", "A-League"], ["India", "Indian Super League"], ["Iran", "Persian Gulf Pro League"],
@@ -86,10 +86,13 @@ const seen = new Map(); // API id -> { name, country, national }
 let failed = 0;
 for (const [list, national] of [[CLUBS, false], [NATIONAL, true]]) {
   for (const [country, name] of list) {
-    const lg = leagues.get(`${country}|${name}`.toLowerCase());
-    if (!lg || !lg.season) { console.warn(`not found: ${country} / ${name}`); failed++; continue; }
+    const lg = [name].flat().map(n => leagues.get(`${country}|${n}`.toLowerCase())).find(l => l?.season);
+    if (!lg) { console.warn(`not found: ${country} / ${name}`); failed++; continue; }
     try {
-      const got = await teamsOf(lg.id, lg.season);
+      let got = await teamsOf(lg.id, lg.season);
+      // tournaments skip years: the plan's newest season may have had none (World Cup 2022, Asian Cup 2023)
+      for (let back = 1; national && !got.length && back <= 3; back++)
+        got = await api(`/teams?league=${lg.id}&season=${Math.min(lg.season, maxSeason) - back}`).catch(() => []);
       for (const { team } of got) if (team && team.national === national && !seen.has(team.id)) seen.set(team.id, { name: team.name.trim(), country: national ? "NAT" : code(team.country), national });
       console.log(`${country} / ${name}: ${got.length}`);
     } catch (e) { console.warn(String(e.message)); failed++; }

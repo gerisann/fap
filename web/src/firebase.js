@@ -246,10 +246,25 @@ export async function joinAsGuest(tid, nick) {
   b.update(doc(db, "tribes", tid), { memberCount: increment(1), lastActivityAt: serverTimestamp() });
   await b.commit(); return until;
 }
+// guests whose 3 days are over leave the count (anyone may do it; the rules check the end date). Returns how many went.
+export async function sweepGuests(tid) {
+  const me = uid(), now = Date.now(); let n = 0;
+  const gone = (await getDocs(query(collection(db, "tribes", tid, "members"), where("role", "==", "guest")))).docs
+    .filter(d => d.id !== me && d.data().until?.toMillis() <= now);
+  for (const g of gone) {
+    const b = writeBatch(db);
+    b.delete(g.ref); b.update(doc(db, "tribes", tid), { memberCount: increment(-1), swept: g.id });
+    try { await b.commit(); n++; } catch (_) { /* someone else swept them first */ }
+  }
+  return n;
+}
 export async function leaveTribe(tid, team) {
   const me = uid(), mine = await getDoc(doc(db, "tribes", tid, "members", me));
   const captain = mine.data()?.role === "captain";
-  const heir = captain ? (await getDocs(query(collection(db, "tribes", tid, "members"), orderBy("joinedAt"), limit(2)))).docs.find(d => d.id !== me) : null;
+  if (captain) await sweepGuests(tid);
+  // the captaincy goes to the longest-standing regular member; a guest only if nobody else is left
+  const others = captain ? (await getDocs(query(collection(db, "tribes", tid, "members"), orderBy("joinedAt"), limit(20)))).docs.filter(d => d.id !== me) : [];
+  const heir = others.find(d => d.data().role !== "guest") || others[0] || null;
   const last = captain && !heir;
   if (last) await clearFeed(tid);
   const b = writeBatch(db), s = await readStats();
