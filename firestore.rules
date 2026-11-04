@@ -253,7 +253,8 @@ service cloud.firestore {
       match /reports/{uid} {
         allow read: if false;
         allow create: if signedIn() && me() == uid
-          && request.resource.data.keys().hasOnly(['createdAt']) && request.resource.data.createdAt == request.time
+          && request.resource.data.keys().hasOnly(['createdAt', 'u']) && request.resource.data.createdAt == request.time
+          && request.resource.data.get('u', uid) == uid
           && getAfter(usernameDoc(name)).data.reports == get(usernameDoc(name)).data.get('reports', 0) + 1;
       }
     }
@@ -302,6 +303,8 @@ service cloud.firestore {
           && request.resource.data.memberCount == resource.data.memberCount - 1
           && request.resource.data.swept is string && expiredGuest(tid, request.resource.data.swept)
           && !existsAfter(member(tid, request.resource.data.swept)))
+        // the sweeper clears swept again right away
+        || (changedOnly(['swept']) && !('swept' in request.resource.data))
         // activity stamp from a member who just posted
         || (changedOnly(['lastActivityAt']) && request.resource.data.lastActivityAt == request.time
           && isMember(tid) && stampedNow(tid))
@@ -345,8 +348,11 @@ service cloud.firestore {
             && (!('lastPostAt' in resource.data) || request.time > resource.data.lastPostAt + duration.value(20, 's')))
           || (changedOnly(['nick']) && request.resource.data.nick == getAfter(userDoc(uid)).data.nick)
         ))
-          // a leaving captain hands the captaincy to another member in the same batch
-          || (me() != uid && changedOnly(['role']) && request.resource.data.role == 'captain'
+          // a leaving captain hands the captaincy to another member in the same batch; an (unexpired) guest
+          // who takes it over becomes a full member: the end date goes
+          || (me() != uid && request.resource.data.role == 'captain'
+            && ((resource.data.role != 'guest' && changedOnly(['role'])) || (resource.data.role == 'guest' && resource.data.until > request.time
+              && changedOnly(['role', 'until']) && !('until' in request.resource.data)))
             && exists(member(tid, me())) && get(member(tid, me())).data.role == 'captain'
             && !existsAfter(member(tid, me())))
         );
@@ -385,7 +391,8 @@ service cloud.firestore {
         match /reports/{uid} {
           allow read: if false;
           allow create: if signedIn() && me() == uid
-            && request.resource.data.keys().hasOnly(['reason', 'createdAt'])
+            && request.resource.data.keys().hasOnly(['reason', 'createdAt', 'u'])
+            && request.resource.data.get('u', uid) == uid
             && request.resource.data.reason in ['spam', 'abuse', 'personal', 'other']
             && request.resource.data.createdAt == request.time
             && getAfter(post(tid, pid)).data.reportCount == get(post(tid, pid)).data.reportCount + 1;
@@ -410,6 +417,11 @@ service cloud.firestore {
     // collection-group reads (all my posts / replies across tribes, for data export and account deletion).
     // Posts and replies are public anyway; this only makes the cross-tribe query possible.
     match /{path=**}/posts/{pid} { allow read: if true; }
+    // reports stay secret from everyone but the reporter: I can find (u) and delete my own, e.g. when my account goes
+    match /{path=**}/reports/{rid} {
+      allow read: if signedIn() && resource.data.get('u', '') == me();
+      allow delete: if signedIn() && rid == me();
+    }
     match /{path=**}/replies/{rid} { allow read: if true; }
 
     match /{document=**} {

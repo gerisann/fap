@@ -38,12 +38,13 @@ jobs:
         run: |
           command -v convert || command -v magick || (sudo apt-get update -q && sudo apt-get install -y -q imagemagick)
           node scripts/fetch-logos.mjs
+          node scripts/fetch-flags.mjs
       - name: Commit if changed
         run: |
           git config user.name "tribemap-bot"
           git config user.email "tribemap-bot@users.noreply.github.com"
-          git add web/src/data/teams-api.js web/src/data/logos.js web/public/logos
+          git add web/src/data/teams-api.js web/src/data/logos.js web/src/data/crest-colors.js web/public/logos web/public/flags
           if git diff --cached --quiet; then echo "no change"; exit 0; fi
           git commit -m "Teams from API-Football $(date -u +%F)"
-          git pull --rebase
-          git push
+          # GitHub sometimes answers a push with a 500: try a few times, rebasing in between
+          for i in 1 2 3 4 5; do git pull --rebase && git push && exit 0; echo "push failed ($i), retrying"; sleep 15; done; exit 1

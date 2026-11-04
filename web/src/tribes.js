@@ -213,6 +213,8 @@ export function initTribes(ctx) {
   function paintMembership() {
     if (!open) return;
     const guest = member?.role === "guest", expired = guest && tsMs(member.until) <= Date.now();
+    // a guest who was handed the captaincy is a full member now: keep the tribe in "My tribes" for good
+    if (member && !guest && readGuests()[open.id]) writeGuests({ ...readGuests(), [open.id]: Number.MAX_SAFE_INTEGER });
     if (expired) dropGuest(open);
     const isMember = !!member && !expired;
     $("#tsJoin").hidden = isMember; $("#tsLeave").hidden = !isMember;

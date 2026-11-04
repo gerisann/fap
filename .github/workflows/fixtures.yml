@@ -35,5 +35,5 @@ jobs:
           git add data/fixtures
           if git diff --cached --quiet; then echo "no change"; exit 0; fi
           git commit -m "Fixtures snapshot $(date -u +%F)"
-          git pull --rebase
-          git push
+          # GitHub sometimes answers a push with a 500: try a few times, rebasing in between
+          for i in 1 2 3 4 5; do git pull --rebase && git push && exit 0; echo "push failed ($i), retrying"; sleep 15; done; exit 1

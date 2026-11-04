@@ -451,3 +451,43 @@ test("expired guests can be swept out by anyone, active ones and members cannot"
   if ((await getDoc(doc(db("dan"), "tribes", tid))).data().memberCount !== 2) throw new Error("count after sweep");
   await assertFails(sweep("dan", tid, "bob"));                                    // already gone
 });
+
+// a leaving captain with only a guest left: the guest takes over as a full member (end date gone)
+function handOver(uid, tid, heir, heirData) {
+  const d = db(uid), b = writeBatch(d);
+  b.delete(doc(d, "tribes", tid, "members", uid));
+  b.update(doc(d, "tribes", tid), { memberCount: increment(-1) });
+  b.update(doc(d, "tribes", tid, "members", heir), heirData);
+  b.update(doc(d, "stats", uid), "current", arrayRemove(tid), "lastLeave", tid, new FieldPath("teams", "Ferencváros"), deleteField());
+  return b.commit();
+}
+test("a guest heir becomes a full captain, never half a guest", async () => {
+  const tid = await seedTribe();                                                  // alice, captain
+  await nick("bob"); await pin("bob", "Arsenal", LON); await assertSucceeds(guestJoin("bob", tid));
+  await assertFails(handOver("alice", tid, "bob", { role: "captain" }));          // the end date must go
+  await assertSucceeds(handOver("alice", tid, "bob", { role: "captain", until: deleteField() }));
+  const m = (await getDoc(doc(db("bob"), "tribes", tid, "members", "bob"))).data();
+  if (m.role !== "captain" || "until" in m) throw new Error(JSON.stringify(m));
+});
+
+// reports: only the reporter finds (u) and deletes their own; nobody else reads them
+test("reports are the reporter's alone: find, export, delete", async () => {
+  const tid = await seedTribe();
+  await assertSucceeds(post("alice", tid, "p1"));
+  const rep = (uid, data) => { const d = db(uid), b = writeBatch(d); b.set(doc(d, "tribes", tid, "posts", "p1", "reports", uid), { reason: "spam", createdAt: serverTimestamp(), ...data }); b.update(doc(d, "tribes", tid, "posts", "p1"), { reportCount: increment(1) }); return b.commit(); };
+  await nick("bob"); await nick("cid");
+  await assertFails(rep("bob", { u: "cid" }));                                    // u must be the reporter
+  await assertSucceeds(rep("bob", { u: "bob" }));
+  await assertSucceeds(getDocs(query(collectionGroup(db("bob"), "reports"), where("u", "==", "bob"))));
+  await assertFails(getDocs(query(collectionGroup(db("cid"), "reports"), where("u", "==", "bob"))));
+  await assertFails(getDoc(doc(db("alice"), "tribes", tid, "posts", "p1", "reports", "bob")));
+  await assertFails(deleteDoc(doc(db("cid"), "tribes", tid, "posts", "p1", "reports", "bob")));
+  await assertSucceeds(deleteDoc(doc(db("bob"), "tribes", tid, "posts", "p1", "reports", "bob")));
+});
+
+test("swept can only be cleared, not set to someone else", async () => {
+  const tid = await seedTribe();
+  await env.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), "tribes", tid), { swept: "ghost" }));
+  await assertFails(updateDoc(doc(db("dan"), "tribes", tid), { swept: "other" }));
+  await assertSucceeds(updateDoc(doc(db("dan"), "tribes", tid), { swept: deleteField() }));
+});

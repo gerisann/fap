@@ -133,12 +133,13 @@ async function myMemberships(me) {
 }
 export async function exportMyData() {
   const me = uid(), u = auth.currentUser;
-  const [profile, pin, presence, stats, posts, replies, cheers, memberships] = await Promise.all([
+  const [profile, pin, presence, stats, posts, replies, cheers, memberships, reports] = await Promise.all([
     one("users", me), one("pins", me), one("presence", me), one("stats", me),
     getDocs(query(collectionGroup(db, "posts"), where("authorUid", "==", me))),
     getDocs(query(collectionGroup(db, "replies"), where("authorUid", "==", me))),
     getDocs(query(collection(db, "cheers"), where("u", "==", me))),
     myMemberships(me),
+    getDocs(query(collectionGroup(db, "reports"), where("u", "==", me))),
   ]);
   return {
     exportedAt: new Date().toISOString(),
@@ -147,6 +148,7 @@ export async function exportMyData() {
     posts: posts.docs.map(d => ({ path: d.ref.path, ...plain(d.data()) })),
     replies: replies.docs.map(d => ({ path: d.ref.path, ...plain(d.data()) })),
     cheers: cheers.docs.map(d => plain(d.data())),
+    reports: reports.docs.map(d => ({ path: d.ref.path, ...plain(d.data()) })),
   };
 }
 // Deleting the sign-in itself needs a recent sign-in; check first, so data and account go together.
@@ -159,6 +161,8 @@ export async function deleteMyAccount(onStep = () => {}) {
   for (const m of await myMemberships(me)) await leaveTribe(m.tid, m.team);
   onStep("cheers");
   for (const d of (await getDocs(query(collection(db, "cheers"), where("u", "==", me)))).docs) await deleteDoc(d.ref);
+  // my reports of posts and names (the counts they added stay: they are anonymous)
+  for (const d of (await getDocs(query(collectionGroup(db, "reports"), where("u", "==", me)))).docs) await deleteDoc(d.ref);
   onStep("profile");
   const b = writeBatch(db), profile = await one("users", me);
   for (const p of [["pins", me], ["presence", me], ["stats", me], ["users", me]]) if (await one(...p)) b.delete(doc(db, ...p));
@@ -177,7 +181,7 @@ export function nameHidden(nick) {
 }
 export async function reportName(nick) {
   const k = nick.toLowerCase(), b = writeBatch(db);
-  b.set(doc(db, "usernames", k, "reports", uid()), { createdAt: serverTimestamp() });
+  b.set(doc(db, "usernames", k, "reports", uid()), { createdAt: serverTimestamp(), u: uid() });
   b.update(doc(db, "usernames", k), { reports: increment(1) });
   await b.commit();
   nameFlags.delete(k);
@@ -255,7 +259,8 @@ export async function sweepGuests(tid) {
   for (const g of gone) {
     const b = writeBatch(db);
     b.delete(g.ref); b.update(doc(db, "tribes", tid), { memberCount: increment(-1), swept: g.id });
-    try { await b.commit(); n++; } catch (_) { /* someone else swept them first */ }
+    try { await b.commit(); n++; } catch (_) { continue; /* someone else swept them first */ }
+    await updateDoc(doc(db, "tribes", tid), { swept: deleteField() }).catch(() => {}); // no uid left behind
   }
   return n;
 }
@@ -272,7 +277,7 @@ export async function leaveTribe(tid, team) {
   b.delete(doc(db, "tribes", tid, "members", me));
   if (last) b.delete(doc(db, "tribes", tid));
   else b.update(doc(db, "tribes", tid), { memberCount: increment(-1) });
-  if (heir) b.update(heir.ref, { role: "captain" });
+  if (heir) b.update(heir.ref, heir.data().role === "guest" ? { role: "captain", until: deleteField() } : { role: "captain" });
   if (s) {
     const args = ["current", arrayRemove(tid), "lastLeave", tid], n = s.teams?.[team] || 0;
     if (s.current.includes(tid) && n >= 1) args.push(new FieldPath("teams", team), n === 1 ? deleteField() : increment(-1));
@@ -312,7 +317,7 @@ export function createReply(tid, pid, nick, text, guest = false) {
 }
 export function reportPost(tid, pid, reason) {
   const b = writeBatch(db);
-  b.set(doc(db, "tribes", tid, "posts", pid, "reports", uid()), { reason, createdAt: serverTimestamp() });
+  b.set(doc(db, "tribes", tid, "posts", pid, "reports", uid()), { reason, createdAt: serverTimestamp(), u: uid() });
   b.update(doc(db, "tribes", tid, "posts", pid), { reportCount: increment(1) });
   return b.commit();
 }

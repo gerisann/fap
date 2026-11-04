@@ -5,6 +5,8 @@ import "./style.css";
 import { TEAMS as CURATED } from "./data/teams.js";
 import { API_TEAMS, API_IDS } from "./data/teams-api.js";
 import { LOGOS } from "./data/logos.js";
+import { FLAGS } from "./data/flags.js";
+import { CREST_COLORS } from "./data/crest-colors.js";
 import { blur, makeDemo } from "./data/demo.js";
 import { loadStyle } from "./basemap.js";
 import { searchCities, searchAddress, searchAreas, searchDistricts } from "./geocode.js";
@@ -39,16 +41,19 @@ const aliasHit = (n, qf) => ALIAS_OF.get(n)?.some(a => a.includes(qf));
 const aliases = { "fradi": "Ferencváros", "ftc": "Ferencváros", "barca": "FC Barcelona", "barça": "FC Barcelona", "bayern": "Bayern München", "man utd": "Manchester United", "psg": "Paris Saint-Germain", "bvb": "Borussia Dortmund", "spurs": "Tottenham Hotspur", "juve": "Juventus", "dvsc": "Debreceni VSC", "dvtk": "Diósgyőr", "fehérvár": "Videoton / MOL Fehérvár" };
 function hashColor(s) { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `hsl(${h % 360} 70% 58%)`; }
 function canonical(name) { const k = name.trim().toLowerCase(); const m = teamMeta.get(k) || teamMeta.get((aliases[k] || "").toLowerCase()) || teamMeta.get((teamByFold.get(fold(k)) || "").toLowerCase()) || teamMeta.get((aliasByFold.get(fold(k)) || "").toLowerCase()); return m ? m.name : name.trim().replace(/\s+/g, " ").slice(0, 40); }
-function colorOf(name) { const m = teamMeta.get(name.toLowerCase()); return m && m.color ? m.color : hashColor(name); }
+// curated colour first, then the main colour of the crest (scripts/crest-colors.mjs), then a stable hash colour
+function colorOf(name) { const m = teamMeta.get(name.toLowerCase()); return m?.color || (m && CREST_COLORS[TEAM_ID.get(m.name)]) || hashColor(name); }
 // a club's crest (self-hosted in web/public/logos/, scripts/fetch-logos.mjs) where we have one; national teams and
 // free-typed names keep their colour dot. paintDot() is the one place a team's dot gets painted.
 const TEAM_ID = new Map([...API_TEAMS.map(([n, , id]) => [n, id]), ...Object.entries(API_IDS)]);
 function crestOf(name) {
-  const m = teamMeta.get(String(name).toLowerCase()); if (!m || m.country === "NAT") return null;
+  const m = teamMeta.get(String(name).toLowerCase()); if (!m) return null;
+  if (m.country === "NAT") return FLAGS[m.name] ? `/flags/${FLAGS[m.name]}.svg` : null; // national teams: their flag
   const id = TEAM_ID.get(m.name); return id && LOGOS.has(id) ? `/logos/${id}.png` : null;
 }
 function paintDot(el, name, color = colorOf(name)) {
-  const u = crestOf(name); el.classList.toggle("crest", !!u); el.style.background = u ? `url(${u}) center/contain no-repeat` : color; return el;
+  const u = crestOf(name); el.classList.toggle("crest", !!u); el.classList.toggle("flag", !!u && u.startsWith("/flags/"));
+  el.style.background = u ? `url(${u}) center/contain no-repeat` : color; return el;
 }
 const DEMO = makeDemo(24000, 100); // 24 000 home points ×100 fans: see makeDemo()
 
@@ -522,13 +527,13 @@ async function refreshMatch() {
     backend.hasCheered(fx.id).then(setCheerBtn).catch(() => setCheerBtn(false));
     track("matchday_show", { team: myPin.t });
   }
-  matchFx = { ...matchFx, ...fx }; paintMatch(); foldMatch(folded() === String(fx.id));
+  matchFx = { ...matchFx, ...fx }; paintMatch(); foldMatch(folded() === String(fx.id)); consentGap();
 }
 // the bar can be folded for the rest of this match (remembered); a small chip brings it back
 const MB_FOLD = "tm.mbHide";
 const folded = () => { try { return localStorage.getItem(MB_FOLD); } catch (_) { return null; } };
 function foldMatch(on) {
-  $("#matchBar").hidden = on; $("#mbChip").hidden = !on;
+  $("#matchBar").hidden = on; $("#mbChip").hidden = !on; queueMicrotask(consentGap);
   if (on) $("#mbChipText").textContent = matchFx.home + " – " + matchFx.away + (Date.now() < matchFx.kickoff ? " " + hhmm(matchFx.kickoff) : "");
 }
 $("#mbClose").onclick = () => { try { localStorage.setItem(MB_FOLD, String(matchFx.id)); } catch (_) {} foldMatch(true); track("matchday_fold"); };
@@ -801,12 +806,28 @@ import("./firebase.js").then(async fb => {
 
 /* ---------- consent + analytics ---------- */
 const banner = $("#consent");
-const answer = v => { setConsent(v); banner.hidden = true; };
+// while the banner is open, the match bar (and its chip) move above it wherever the two would overlap
+function consentGap() {
+  const mb = $("#matchBar"), chip = $("#mbChip"), el = !mb.hidden ? mb : !chip.hidden ? chip : null;
+  let lift = false;
+  if (!banner.hidden && el) {
+    const a = banner.getBoundingClientRect(), b = el.getBoundingClientRect();
+    lift = a.left < b.right && b.left < a.right;
+    document.body.style.setProperty("--consent-h", Math.ceil(innerHeight - a.top) + "px");
+  }
+  document.body.classList.toggle("consent-lift", lift);
+}
+const showBanner = on => { banner.hidden = !on; consentGap(); };
+const answer = v => { setConsent(v); showBanner(false); };
 $("#consentYes").onclick = () => answer("granted");
 $("#consentNo").onclick = () => answer("denied");
-$("#privacyBtn").onclick = () => { banner.hidden = false; };
-if (!consent()) banner.hidden = false;
+$("#privacyBtn").onclick = () => showBanner(true);
+if (!consent()) showBanner(true);
+addEventListener("resize", consentGap);
 initAnalytics({ lang, theme, consent_analytics: consent() || "unset" });
+
+// offline app shell + cached crests, flags and assets (web/public/sw.js); not in dev, where it would only get in the way
+if ("serviceWorker" in navigator && import.meta.env.PROD) addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 
 /* ---------- first visit: a short welcome, once per browser (not on the way back from an e-mail sign-in link),
    then the guided tour; the footer's "Tour" button replays it ---------- */
