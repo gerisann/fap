@@ -211,7 +211,7 @@ export default {
   saveFailed: "Couldn't save, please try again.",
   authFailed: "Sign-in failed, please try again.",
   offline: "Live data is unavailable right now.",
-  consentText: "We measure how the map is used to make it better. Your pin's location is never included.",
+  consentText: "This site uses cookies and measurement tags. Your real location is never used for advertising and never shared with third parties.",
   welcomeTitle: "Hi! This is the fans’ world map.",
   welcomeP1: "Mark where you live and who you support. The map shows your team, never your name.",
   welcomeP2: "See where your team’s fans live: in your city, your country, around the world.",

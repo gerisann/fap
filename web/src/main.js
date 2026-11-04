@@ -376,7 +376,7 @@ const flags = document.querySelectorAll(".flag");
 const paintFlags = () => { for (const b of flags) b.setAttribute("aria-pressed", String(b.dataset.lang === lang)); };
 for (const b of flags) b.onclick = () => setLang(b.dataset.lang);
 paintFlags();
-onLangChange(l => { paintFlags(); renderAccount(); updateCta(); if (lastGroups) renderStats(lastGroups, lastTotal); tribes?.render(); reloadStyle(); track("lang_change", { lang: l }); });
+onLangChange(l => { if (matchFx) { paintMatch(); paintCounts(lastCounts); } paintFlags(); renderAccount(); updateCta(); if (lastGroups) renderStats(lastGroups, lastTotal); tribes?.render(); reloadStyle(); track("lang_change", { lang: l }); });
 
 /* ---------- sign-up sheet (new pin, or editing my pin) ---------- */
 let chosenTeam = null, pickLL = null, picking = false, pendingMarker = null, myMarker = null;
@@ -540,7 +540,9 @@ function paintMatch() {
   $("#mbADot").style.background = $("#mbBarA").style.background = sideColor("a");
   $("#mbInfo").textContent = (Date.now() < fx.kickoff ? t("kickoffAt", { time: hhmm(fx.kickoff) }) : t("matchLive")) + " · " + fx.league;
 }
+let lastCounts = {};
 function paintCounts(m) {
+  lastCounts = m || {};
   const h = m.h || 0, a = m.a || 0;
   $("#mbCountH").textContent = t("cheersN", { n: num(h) }); $("#mbCountA").textContent = t("cheersN", { n: num(a) });
   $("#mbBarH").style.flexGrow = h + a ? h : 1; $("#mbBarA").style.flexGrow = h + a ? a : 1;
@@ -570,8 +572,9 @@ async function loadCheerLayer() {
   cheersFC = { type: "FeatureCollection", features: list.map(c => ({ type: "Feature", properties: { c: sideColor(c.side) }, geometry: { type: "Point", coordinates: [c.lng, c.lat] } })) };
   map.getSource("cheers")?.setData(cheersFC);
 }
-$("#mbMap").onclick = async () => {
-  cheersShown = !cheersShown; relabel($("#mbMap"), cheersShown ? "hideCheers" : "showCheers");
+// a switch: the cheers of this match as coloured dots on the map, on or off
+$("#mbMap").onchange = async () => {
+  cheersShown = $("#mbMap").checked;
   if (cheersShown) { await loadCheerLayer(); map.flyTo({ center: [myPin.lng, myPin.lat], zoom: 3, duration: 1200 }); }
   else { cheersFC = { type: "FeatureCollection", features: [] }; map.getSource("cheers")?.setData(cheersFC); }
   track("cheer_map", { on: cheersShown });

@@ -150,15 +150,15 @@
 
 <!-- match day: my team plays today → cheer all day until the final whistle, live split vs the opponent -->
 <section class="matchbar" id="matchBar" hidden data-i18n-attr="aria-label:matchday">
-  <div class="mb-top"><span class="mb-tag" data-i18n="matchday"></span><span class="mb-right"><span id="mbInfo"></span><button class="x mb-x" id="mbClose" data-i18n-attr="aria-label:close">✕</button></span></div>
+  <div class="mb-top"><span class="mb-tag" data-i18n="matchday"></span><span class="mb-right"><button class="x mb-x" id="mbClose" data-i18n-attr="aria-label:close">✕</button></span></div>
   <div class="mb-teams">
-    <span class="mb-side"><i class="dot" id="mbHDot"></i><b id="mbHome"></b></span>
+    <span class="mb-side"><span class="mb-name"><i class="dot" id="mbHDot"></i><b id="mbHome"></b></span><small class="mb-n" id="mbCountH"></small></span>
     <span class="mb-vs">–</span>
-    <span class="mb-side mb-away"><b id="mbAway"></b><i class="dot" id="mbADot"></i></span>
+    <span class="mb-side mb-away"><span class="mb-name"><b id="mbAway"></b><i class="dot" id="mbADot"></i></span><small class="mb-n" id="mbCountA"></small></span>
   </div>
   <div class="mb-bar"><i id="mbBarH"></i><i id="mbBarA"></i></div>
-  <div class="mb-counts"><span id="mbCountH"></span><span id="mbCountA"></span></div>
-  <div class="mb-actions"><button class="save sm" id="mbCheer" data-i18n="cheer"></button><button class="textbtn" id="mbMap" data-i18n="showCheers"></button></div>
+  <div class="mb-info" id="mbInfo"></div>
+  <div class="mb-actions"><button class="save sm" id="mbCheer" data-i18n="cheer"></button><label class="switch mb-switch"><input type="checkbox" id="mbMap"> <span data-i18n="showCheers"></span></label></div>
 </section>
 
 <button class="cta" id="openSheet" data-i18n="cta"></button>

@@ -211,7 +211,7 @@ export default {
   saveFailed: "No se pudo guardar, inténtalo de nuevo.",
   authFailed: "No se pudo iniciar sesión, inténtalo de nuevo.",
   offline: "Los datos en vivo no están disponibles ahora.",
-  consentText: "Medimos cómo se usa el mapa para mejorarlo. La ubicación de tu pin nunca se incluye.",
+  consentText: "Este sitio usa cookies y etiquetas de medición. Tu ubicación real nunca se usa con fines publicitarios ni se comparte con terceros.",
   welcomeTitle: "¡Hola! Este es el mapa mundial de los aficionados.",
   welcomeP1: "Marca dónde vives y de qué equipo eres. El mapa muestra tu equipo, nunca tu nombre.",
   welcomeP2: "Mira dónde viven los aficionados de tu equipo: en tu ciudad, tu país y todo el mundo.",
