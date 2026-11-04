@@ -14,6 +14,7 @@ import { todaysMatches, cheerOpen } from "./fixtures.js";
 import { ALIASES } from "./teamkeys.js";
 import { asyncCombo } from "./combo.js";
 import { runTour } from "./tour.js";
+import { holdToCheer } from "./cheerhold.js";
 import { t, num, lang, locale, applyDom, setLang, onLangChange } from "./i18n.js";
 import { track, initAnalytics, consent, setConsent } from "./analytics.js";
 
@@ -474,7 +475,7 @@ function showMine(p) {
   if (myMarker) { myMarker.remove(); myMarker = null; }
   if (!p) return;
   // the marker element gets MapLibre's positioning transform, so the drop animation lives on the inner .me-pin
-  const el = document.createElement("div"), pinEl = document.createElement("div"); pinEl.className = "me-pin"; pinEl.title = t("you", { team: p.t });
+  const el = document.createElement("div"), pinEl = document.createElement("div"); el.className = "me-mk"; pinEl.className = "me-pin"; pinEl.title = t("you", { team: p.t });
   pinEl.innerHTML = `<svg viewBox="0 0 32 42" aria-hidden="true"><path d="M16 41s14-13.2 14-24.5a14 14 0 0 0-28 0C2 27.8 16 41 16 41z" fill="${colorOf(p.t)}" stroke="#fff" stroke-width="2.5"/><circle cx="16" cy="16.5" r="6" fill="#fff"/></svg>`;
   const tag = document.createElement("span"); tag.textContent = profile?.nick && validUsername(profile.nick) && !profile.nameHidden ? "@" + profile.nick : t("me"); pinEl.append(tag);
   el.append(pinEl);
@@ -545,15 +546,25 @@ function paintCounts(m) {
   $("#mbBarH").style.flexGrow = h + a ? h : 1; $("#mbBarA").style.flexGrow = h + a ? a : 1;
 }
 function setCheerBtn(done) { const b = $("#mbCheer"); relabel(b, done ? "cheered" : "cheer"); b.disabled = done; b.classList.toggle("done", done); }
-$("#mbCheer").onclick = async () => {
-  if (!matchFx || !backend || !myPin) return;
-  $("#mbCheer").disabled = true;
-  try {
-    const r = await backend.cheer(matchFx, myPin);
-    setCheerBtn(true); $("#mbInfo").textContent = t("cheerThanks") + (r.xp ? " +25 XP" : "");
-    track("cheer", { team: myPin.t, on: r.xp }); if (cheersShown) loadCheerLayer();
-  } catch (e) { $("#mbCheer").disabled = false; $("#mbInfo").textContent = t("saveFailed"); track("cheer_error", { code: e.code || "unknown" }); }
-};
+// cheering takes a 5-second hold (cheerhold.js): the button fills in my colour while puppet fans climb out behind the card
+const lum = c => { const [r, g, b] = rgbOf(c); return (0.299 * r + 0.587 * g + 0.114 * b) / 255; };
+let cheerXp = false;
+holdToCheer($("#mbCheer"), $("#matchBar"), {
+  canStart: () => !!(matchFx && backend && myPin),
+  color: () => sideColor(matchFx.side),
+  text: c => lum(c) > .62 ? "#16181c" : "#fff",
+  labels: () => ({ hold: t("cheerHold"), done: t("cheerOk"), idle: t("cheer") }),
+  track,
+  onShort: () => { $("#mbInfo").textContent = t("cheerHoldHint"); },
+  onStart: () => paintMatch(),
+  async done() {
+    try {
+      const r = await backend.cheer(matchFx, myPin); cheerXp = !!r.xp;
+      track("cheer", { team: myPin.t, on: r.xp }); if (cheersShown) loadCheerLayer();
+    } catch (e) { $("#mbInfo").textContent = t("saveFailed"); track("cheer_error", { code: e.code || "unknown" }); throw e; }
+  },
+  settle(ok) { setCheerBtn(ok); if (ok) $("#mbInfo").textContent = t("cheerThanks") + (cheerXp ? " +25 XP" : ""); },
+});
 async function loadCheerLayer() {
   const list = await backend.loadCheers(matchFx.id).catch(() => []);
   cheersFC = { type: "FeatureCollection", features: list.map(c => ({ type: "Feature", properties: { c: sideColor(c.side) }, geometry: { type: "Point", coordinates: [c.lng, c.lat] } })) };
@@ -686,6 +697,8 @@ async function publish(pin) {
     if (pendingMarker) { pendingMarker.remove(); pendingMarker = null; }
     setStatus(t(had ? "updated" : "saved"));
     if (!had) map.flyTo({ center: [pin.lng, pin.lat], zoom: Math.max(map.getZoom(), 12) });
+    // done: the sheet steps aside (after a beat, so the confirmation is read) and the map shows the pin
+    setTimeout(() => { if (!sheet.hidden) { sheet.hidden = true; document.body.classList.toggle("sheet-open", !!tribes?.isOpen()); stopPick(); } }, 900);
     track("pin_save", { team: pin.t, precision: pin.p, custom: !teamMeta.has(pin.t.toLowerCase()), update: had });
   } catch (e) {
     setStatus(t(e.code === "permission-denied" && had ? "tooFast" : "saveFailed"), true);

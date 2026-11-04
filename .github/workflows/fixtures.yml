@@ -35,4 +35,5 @@ jobs:
           git add data/fixtures
           if git diff --cached --quiet; then echo "no change"; exit 0; fi
           git commit -m "Fixtures snapshot $(date -u +%F)"
+          git pull --rebase
           git push

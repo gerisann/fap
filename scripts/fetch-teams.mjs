@@ -86,7 +86,11 @@ const seen = new Map(); // API id -> { name, country, national }
 let failed = 0;
 for (const [list, national] of [[CLUBS, false], [NATIONAL, true]]) {
   for (const [country, name] of list) {
-    const lg = [name].flat().map(n => leagues.get(`${country}|${n}`.toLowerCase())).find(l => l?.season);
+    // exact names first, then any current league of that country whose name starts the same way (before " - ")
+    const plain = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const base = plain(`${country}|${[name].flat()[0].split(" - ")[0]}`.toLowerCase());
+    const lg = [name].flat().map(n => leagues.get(`${country}|${n}`.toLowerCase())).find(l => l?.season)
+      || [...leagues].find(([k, l]) => plain(k).startsWith(base) && l.season && (console.log(`${country}: using ${k}`), true))?.[1];
     if (!lg) { console.warn(`not found: ${country} / ${name}`); failed++; continue; }
     try {
       let got = await teamsOf(lg.id, lg.season);
